@@ -35,7 +35,10 @@
 #include "stm32f0xx_hal.h"
 
 /* USER CODE BEGIN Includes */
-
+#include "uart.h"
+#include "timer.h"
+#include "i2c_slave.h"
+#include "adc.h"
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
@@ -100,7 +103,9 @@ int main(void)
   MX_USART1_UART_Init();
 
   /* USER CODE BEGIN 2 */
-
+  HAL_ADCEx_Calibration_Start(&hadc);
+  i2c_slave_start();
+  timer_start();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -111,6 +116,12 @@ int main(void)
 
   /* USER CODE BEGIN 3 */
 
+    /* debugging code
+    print_timer_status();
+    i2c_show_data();
+     */
+    adc_poll();
+    HAL_Delay(100);
   }
   /* USER CODE END 3 */
 
@@ -278,8 +289,8 @@ static void MX_RTC_Init(void)
     */
   hrtc.Instance = RTC;
   hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
-  hrtc.Init.AsynchPrediv = 127;
-  hrtc.Init.SynchPrediv = 255;
+  hrtc.Init.AsynchPrediv = 31;
+  hrtc.Init.SynchPrediv = 1023;
   hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
   hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
   hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;

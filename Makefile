@@ -39,21 +39,21 @@ C_SOURCES = \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_pwr_ex.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_rcc.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_rcc_ex.c \
+  Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_rtc.c \
+  Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_rtc_ex.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_tim.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_tim_ex.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_uart.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_uart_ex.c \
-  Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_rtc.c \
-  Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_rtc_ex.c \
+  Src/adc.c \
+  Src/flash.c \
   Src/i2c_slave.c \
   Src/main.c \
   Src/stm32f0xx_hal_msp.c \
   Src/stm32f0xx_it.c \
   Src/system_stm32f0xx.c \
   Src/timer.c \
-  Src/uart.c \
-  Src/adc.c \
-  Src/flash.c
+  Src/uart.c  
 ASM_SOURCES = \
   startup/startup_stm32f031x6.s
 
@@ -73,7 +73,7 @@ BIN = $(CP) -O binary -S
 #######################################
 # macros for gcc
 AS_DEFS =
-C_DEFS = -D__weak="__attribute__((weak))" -D__packed="__attribute__((__packed__))" -DUSE_HAL_DRIVER -DSTM32F030x6 -D_GNU_SOURCE
+C_DEFS = -D__weak="__attribute__((weak))" -D__packed="__attribute__((__packed__))" -DUSE_HAL_DRIVER -DSTM32F031x6 -D_GNU_SOURCE
 # includes for gcc
 AS_INCLUDES =
 C_INCLUDES = -IDrivers/CMSIS/Device/ST/STM32F0xx/Include
@@ -94,7 +94,7 @@ CFLAGS += -std=c99 -MD -MP -MF .dep/$(@F).d
 # LDFLAGS
 #######################################
 # link script
-LDSCRIPT = STM32F030F4Px_FLASH.ld
+LDSCRIPT = STM32F031C6Tx_FLASH.ld
 # libraries
 LIBS = -lc -lm -lnosys
 LIBDIR =
