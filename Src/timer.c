@@ -101,9 +101,12 @@ void set_rtc_registers() {
   HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
   HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
 
-  i2c_registers_page4.subseconds = sTime.SecondFraction;
-  i2c_registers_page4.date = ((uint16_t)sDate.Year) << 8 | ((uint16_t)sDate.Month) << 5 | ((uint16_t)sDate.Date);
-  i2c_registers_page4.time = ((uint16_t)sTime.Hours) << 12 | ((uint16_t)sTime.Minutes) << 6 | sTime.Seconds;
+  i2c_registers_page4.subseconds = sTime.SubSeconds;
+  i2c_registers_page4.year = sDate.Year;
+  i2c_registers_page4.datetime = 
+    ((uint32_t)sDate.Date) | ((uint32_t)sDate.Month) << 5 |
+    ((uint32_t)sTime.Seconds) << 9 | ((uint32_t)sTime.Minutes) << 15 |
+    ((uint32_t)sTime.Hours) << 21;
 
   end = __HAL_TIM_GET_COUNTER(&htim2);
 

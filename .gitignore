@@ -1,2 +1,11 @@
 build/
 .dep/
+*.o
+clients/ds3231
+clients/input-capture-i2c
+clients/pcf2129
+clients/pi-pwm-setup
+clients/rtc
+clients/set-calibration-data
+clients/timestamps-gpio
+clients/timestamps-i2c

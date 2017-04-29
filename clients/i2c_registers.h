@@ -1,23 +1,16 @@
-#ifndef I2C_SLAVE
-#define I2C_SLAVE
+#ifndef I2C_REGISTERS_H
+#define I2C_REGISTERS_H
 
-extern I2C_HandleTypeDef hi2c1;
+#define I2C_ADDR 0x4
+#define EXPECTED_FREQ 48000000
+#define INPUT_CHANNELS 3
 
-void i2c_slave_start();
-void i2c_show_data();
-uint8_t i2c_read_active();
-
-#define I2C_REGISTER_PAGE_SIZE 32
-
-#define I2C_REGISTER_OFFSET_HZ_HI 26
-#define I2C_REGISTER_OFFSET_HZ_LO 27
+// i2c interface
 #define I2C_REGISTER_OFFSET_PAGE 31
-
 #define I2C_REGISTER_PAGE1 0
 #define I2C_REGISTER_PAGE2 1
 #define I2C_REGISTER_PAGE3 2
 #define I2C_REGISTER_PAGE4 3
-
 #define I2C_REGISTER_VERSION 3
 
 #define SAVE_STATUS_NONE 0
@@ -25,7 +18,7 @@ uint8_t i2c_read_active();
 #define SAVE_STATUS_ERASE_FAIL 2
 #define SAVE_STATUS_WRITE_FAIL 3
 
-extern struct i2c_registers_type {
+struct i2c_registers_type {
   // start 0 len 4
   uint32_t milliseconds_now;
   // start 4 len 4
@@ -42,9 +35,9 @@ extern struct i2c_registers_type {
   uint8_t version;
   // start 31 len 1
   uint8_t page_offset;
-} i2c_registers;
+};
 
-extern struct i2c_registers_type_page2 {
+struct i2c_registers_type_page2 {
   uint32_t last_adc_ms;
   uint16_t internal_temp;
   uint16_t internal_vref;
@@ -54,9 +47,11 @@ extern struct i2c_registers_type_page2 {
   uint16_t vrefint_cal; // internal_vref value at 30C+/-5C @3.3V+/-10mV
   uint8_t reserved[15];
   uint8_t page_offset;
-} i2c_registers_page2;
+};
 
-extern struct i2c_registers_type_page3 {
+// write from tcxo_a to save
+#define I2C_PAGE3_WRITE_LENGTH 20
+struct i2c_registers_type_page3 {
   /* tcxo_X variables are floats stored as:
    * byte 1: negative sign (1 bit), exponent bits 7-1
    * byte 2: exponent bit 0, mantissa bits 23-17
@@ -79,14 +74,13 @@ extern struct i2c_registers_type_page3 {
   uint8_t reserved[10];
 
   uint8_t page_offset;
-} i2c_registers_page3;
+};
 
 #define SET_RTC_DATETIME 1
 #define SET_RTC_CALIBRATION 2
 #define SET_RTC_SUBSECOND 3
 
-// rtc timestamp taken at page switch i2c read
-extern struct i2c_registers_type_page4 {
+struct i2c_registers_type_page4 {
   uint16_t subsecond_div; // number of counts in 1s
   uint16_t subseconds; // read: subseconds (downcount), write: bit 16: +1s, bit 15..0: -N counts/PREDIV_S
 
@@ -105,6 +99,9 @@ extern struct i2c_registers_type_page4 {
   uint8_t year; // 0-99
   uint8_t page_offset;
 // ^^^ 12+20=32 bytes
-} i2c_registers_page4;
+};
+
+void get_i2c_structs(int fd, struct i2c_registers_type *i2c_registers, struct i2c_registers_type_page2 *i2c_registers_page2);
+float last_i2c_time();
 
 #endif
