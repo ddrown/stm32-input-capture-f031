@@ -9,6 +9,7 @@
 struct i2c_registers_type i2c_registers;
 struct i2c_registers_type_page2 i2c_registers_page2;
 struct i2c_registers_type_page3 i2c_registers_page3;
+struct i2c_registers_type_page4 i2c_registers_page4;
 
 static void *current_page = &i2c_registers;
 
@@ -30,8 +31,11 @@ void i2c_slave_start() {
 
   memset(&i2c_registers_page3, '\0', sizeof(i2c_registers_page3));
 
+  memset(&i2c_registers_page4, '\0', sizeof(i2c_registers_page4));
+
   i2c_registers.page_offset = I2C_REGISTER_PAGE1;
-  i2c_registers.source_HZ_ch1 = DEFAULT_SOURCE_HZ;
+  i2c_registers.primary_channel = 0;
+  i2c_registers.primary_channel_HZ = DEFAULT_SOURCE_HZ;
   i2c_registers.version = I2C_REGISTER_VERSION;
 
   i2c_registers_page2.page_offset = I2C_REGISTER_PAGE2;
@@ -47,6 +51,12 @@ void i2c_slave_start() {
   i2c_registers_page3.max_calibration_temp = tcxo_calibration[4] & 0xff;
   i2c_registers_page3.min_calibration_temp = (tcxo_calibration[4] >> 8) & 0xff;
   i2c_registers_page3.rmse_fit = (tcxo_calibration[4] >> 16) & 0xff;
+
+  i2c_registers_page4.page_offset = I2C_REGISTER_PAGE4;
+  i2c_registers_page4.subsecond_div = (hrtc.Instance->PRER & RTC_PRER_PREDIV_S);
+  i2c_registers_page4.lse_calibration = 0xffff & hrtc.Instance->CALR;
+  i2c_registers_page4.backup_register[0] = HAL_RTCEx_BKUPRead(&hrtc, 0);
+  i2c_registers_page4.backup_register[1] = HAL_RTCEx_BKUPRead(&hrtc, 1);
 
   HAL_I2C_EnableListen_IT(&hi2c1);
 }
@@ -69,12 +79,17 @@ static void change_page(uint8_t data) {
   switch(data) {
     case I2C_REGISTER_PAGE1:
       current_page = &i2c_registers;
+      i2c_registers.milliseconds_now = HAL_GetTick();
       break;
     case I2C_REGISTER_PAGE2:
       current_page = &i2c_registers_page2;
       break;
     case I2C_REGISTER_PAGE3:
       current_page = &i2c_registers_page3;
+      break;
+    case I2C_REGISTER_PAGE4:
+      current_page = &i2c_registers_page4;
+      set_rtc_registers();
       break;
     default:
       current_page = &i2c_registers;
@@ -112,10 +127,11 @@ static void i2c_data_rcv(uint8_t position, uint8_t data) {
 
     return;
   }
+
+  //TODO: page4
 }
 
 static void i2c_data_xmt(I2C_HandleTypeDef *hi2c) {
-  i2c_registers.milliseconds_now = HAL_GetTick();
   HAL_I2C_Slave_Sequential_Transmit_IT(hi2c, current_page, I2C_REGISTER_PAGE_SIZE, I2C_FIRST_FRAME);
 }
 

@@ -75,7 +75,6 @@ static void MX_USART1_UART_Init(void);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
-
 /* USER CODE END 0 */
 
 int main(void)
@@ -179,6 +178,8 @@ void SystemClock_Config(void)
     /**Configure LSE Drive Capability 
     */
   __HAL_RCC_LSEDRIVE_CONFIG(RCC_LSEDRIVE_LOW);
+
+  HAL_RCC_MCOConfig(RCC_MCO, RCC_MCO1SOURCE_LSE, RCC_MCODIV_128);
 
     /**Configure the Systick interrupt time 
     */
@@ -299,13 +300,6 @@ static void MX_RTC_Init(void)
     Error_Handler();
   }
 
-    /**Enable the reference Clock input 
-    */
-  if (HAL_RTCEx_SetRefClock(&hrtc) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
 }
 
 /* TIM2 init function */
@@ -378,7 +372,7 @@ static void MX_TIM14_Init(void)
   TIM_IC_InitTypeDef sConfigIC;
 
   htim14.Instance = TIM14;
-  htim14.Init.Prescaler = 47;
+  htim14.Init.Prescaler = 0;
   htim14.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim14.Init.Period = 65535;
   htim14.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -395,14 +389,14 @@ static void MX_TIM14_Init(void)
 
   sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
   sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
-  sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
+  sConfigIC.ICPrescaler = TIM_ICPSC_DIV8;
   sConfigIC.ICFilter = 0;
   if (HAL_TIM_IC_ConfigChannel(&htim14, &sConfigIC, TIM_CHANNEL_1) != HAL_OK)
   {
     Error_Handler();
   }
 
-  if (HAL_TIMEx_RemapConfig(&htim14, TIM_TIM14_RTC) != HAL_OK)
+  if (HAL_TIMEx_RemapConfig(&htim14, TIM_TIM14_MCO) != HAL_OK)
   {
     Error_Handler();
   }
