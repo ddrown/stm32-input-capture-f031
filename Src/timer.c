@@ -12,13 +12,13 @@ static uint8_t lse_counts = LSE_DIVIDED_FREQ;
 static uint8_t counts_primary = DEFAULT_SOURCE_HZ;
 
 static const uint8_t channel_values[] = {TIM_CHANNEL_1, TIM_CHANNEL_2, TIM_CHANNEL_3, TIM_CHANNEL_4};
-static const uint8_t overflow_flags[] = {TIM_FLAG_CC1OF, TIM_FLAG_CC2OF, TIM_FLAG_CC3OF, TIM_FLAG_CC4OF};
+static const uint16_t overflow_flags[] = {TIM_FLAG_CC1OF, TIM_FLAG_CC2OF, TIM_FLAG_CC3OF, TIM_FLAG_CC4OF};
 
 static inline void tim2_channel(uint32_t channel, uint32_t milli_irq) {
   if(channel == i2c_registers.primary_channel) {
     counts_primary--;
     if(counts_primary == 0) {
-      i2c_registers.milliseconds_irq_primary = milliseconds_irq;
+      i2c_registers.milliseconds_irq_primary = milli_irq;
       i2c_registers.tim2_at_cap[channel] = HAL_TIM_ReadCapturedValue(&htim2, channel_values[channel]);
 
       if(i2c_registers.primary_channel_HZ > 0) {
@@ -63,6 +63,8 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
         break;
       case HAL_TIM_ACTIVE_CHANNEL_4:
         tim2_channel(3, milliseconds_irq);
+        break;
+      default:
         break;
     }
   } else if(htim == &htim14) {
