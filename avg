@@ -1,0 +1,53 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Long;
+
+my($column,$combine,$id,$format,$every,$running_factor) = (0,0,0,"%.3f",0,0.9);
+
+GetOptions (
+    "column=i" => \$column,
+    "combine=i" => \$combine,
+    "id=i" => \$id,
+    "format=s" => \$format,
+    "every=i" => \$every,
+    "running=s" => \$running_factor
+) or die("Error in command line arguments\n");
+
+if(not $column or not $combine) {
+  die("need --column and --combine");
+}
+
+$column--;
+$id--;
+
+my(@history);
+my($running);
+
+while(<>) {
+  chomp($_);
+  my(@a) = split(/ +/);
+  if($a[$column] !~ /[0-9]/) {
+    next;
+  }
+  push(@history, $a[$column]);
+  if(@history == $combine) {
+    my $sum = 0;
+    map { $sum += $_; } @history;
+    my $avg = $sum/$combine;
+    if($id >= 0) {
+      print($a[$id]." ");
+    }
+    if(defined($running)) {
+      $running = $running * $running_factor + $avg * (1-$running_factor);
+    } else {
+      $running = $avg;
+    }
+    printf("$format $format\n", $running, $avg);
+    if($every) {
+      splice(@history,0,$every);
+    } else {
+      @history = ();
+    }
+  }
+}

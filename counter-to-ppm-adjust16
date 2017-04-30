@@ -1,0 +1,60 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Long;
+
+my($column,$id,$frequency,$adjust16) = (0,0,0,0);
+my($limit);
+
+GetOptions (
+    "column=i" => \$column,
+    "id=i" => \$id,
+    "frequency=i" => \$frequency,
+    "adjust16=i" => \$adjust16,
+    "limit=f" => \$limit
+) or die("Error in command line arguments\n");
+
+if(not $column or not $frequency or not $adjust16) {
+  die("need --column and --frequency and --adjust16");
+}
+
+$column--;
+$adjust16--;
+$id--;
+
+my($last,$last_adjust16);
+while(<>) {
+  chomp($_);
+  my(@a) = split(/ +/);
+  if($a[$column] !~ /[0-9]/) {
+    next;
+  }
+  if(defined($last)) {
+    if($id >= 0) {
+      print $a[$id]," ";
+    }
+    my $counter_value = $a[$column];
+    my $adjust_amount = $counter_value % 65536 - $a[$adjust16] - $last_adjust16;
+    if($adjust_amount > 10000) {
+      $adjust_amount -= 65536;
+    } elsif($adjust_amount < -10000) {
+      $adjust_amount += 65536;
+    }
+    $counter_value += $adjust_amount;
+    my $diff = $counter_value - $last;
+    if($diff < 0) {
+      $diff += 2**32;
+    }
+    my $seconds = int($diff/$frequency+0.3);
+    my $ppm = ($frequency*$seconds-$diff)/($frequency*$seconds)*1000000;
+    if(not defined($limit) or abs($ppm) < $limit) {
+      printf("%u %u %u %d %.3f\n", $diff, $last_adjust16, $seconds, $adjust_amount, $ppm);
+    } else {
+      print("\n");
+    }
+    $last = $counter_value;
+  } else {
+    $last = $a[$column];
+    $last_adjust16 = $last % 65536 - $a[$adjust16];
+  }
+}

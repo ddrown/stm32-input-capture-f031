@@ -1,0 +1,57 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Long;
+
+my($column,$id,$frequency,$number) = (0,0,0,0);
+my($limit);
+
+GetOptions (
+    "column=i" => \$column,
+    "id=i" => \$id,
+    "frequency=i" => \$frequency,
+    "number=i" => \$number,
+    "limit=f" => \$limit
+) or die("Error in command line arguments\n");
+
+if(not $column or not $frequency or not $number) {
+  die("need --column and --frequency and --number");
+}
+
+$column--;
+$number--;
+$id--;
+
+my($last,$last_number);
+while(<>) {
+  chomp($_);
+  my(@a) = split(/ +/);
+  if($a[$column] !~ /[0-9]/) {
+    next;
+  }
+  if(defined($last)) {
+    if($id >= 0) {
+      print $a[$id]," ";
+    }
+    my $diff = $a[$column] - $last;
+    if($diff < 0) {
+      $diff += 2**32;
+    }
+    my $diff_number = $a[$number] - $last_number;
+    if($diff_number < 0) {
+      $diff_number += 256;
+    }
+    if($diff_number == 0) {
+      print("\n");
+      next;
+    }
+    my $ppm = ($frequency*$diff_number-$diff)/($frequency*$diff_number)*1000000;
+    if(not defined($limit) or abs($ppm) < $limit) {
+      printf("%u %u %.3f\n", $diff, $diff_number, $ppm);
+    } else {
+      print("\n");
+    }
+  }
+  $last = $a[$column];
+  $last_number = $a[$number];
+}

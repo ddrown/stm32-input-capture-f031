@@ -10,3 +10,8 @@ clients/set-calibration-data
 clients/timestamps-gpio
 clients/timestamps-i2c
 clients/calibration
+*.log
+*.png
+typescript
+index.html
+samples
