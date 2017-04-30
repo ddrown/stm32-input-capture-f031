@@ -102,6 +102,7 @@ struct i2c_registers_type_page4 {
 };
 
 void get_i2c_structs(int fd, struct i2c_registers_type *i2c_registers, struct i2c_registers_type_page2 *i2c_registers_page2);
+void get_rtc(int fd, struct timeval *setpage, struct i2c_registers_type_page4 *i2c_registers_page4);
 float last_i2c_time();
 
 #endif

@@ -1,4 +1,6 @@
 #include <stdint.h>
+#include <time.h>
+#include <sys/time.h>
 
 #include "i2c_registers.h"
 #include "vref_calc.h"
@@ -12,9 +14,14 @@ static float vrefs_minute[AVERAGE_MINUTE_SAMPLES];
 static int8_t vref_index = -1;
 static int8_t vref_minute_index = -1;
 static float last_vref_value = 0.0;
+static float last_vbat_value = 0.0;
 
 float last_vref() {
   return last_vref_value;
+}
+
+float last_vbat() {
+  return last_vbat_value;
 }
 
 static void add_vref_minute() {
@@ -29,7 +36,7 @@ static void add_vref_minute() {
   last_vref_value = avg_f(vrefs_minute, vref_minute_index+1);
 }
 
-void add_vref_data(const struct i2c_registers_type_page2 *i2c_registers_page2) {
+void add_power_data(const struct i2c_registers_type_page2 *i2c_registers_page2) {
   if(vref_index < (AVERAGE_SAMPLES-1)) {
     vref_index++;
   } else {
@@ -44,4 +51,6 @@ void add_vref_data(const struct i2c_registers_type_page2 *i2c_registers_page2) {
 
   if(vref_minute_index < 0)
     last_vref_value = avg_f(vrefs, vref_index+1);
+
+  last_vbat_value = i2c_registers_page2->internal_vbat/4096.0*last_vref_value * 2;
 }
