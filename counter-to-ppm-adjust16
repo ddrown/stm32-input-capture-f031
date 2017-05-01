@@ -40,7 +40,7 @@ while(<>) {
     } elsif($adjust_amount < -10000) {
       $adjust_amount += 65536;
     }
-    $counter_value += $adjust_amount;
+    $counter_value = $counter_value - $adjust_amount;
     my $diff = $counter_value - $last;
     if($diff < 0) {
       $diff += 2**32;
