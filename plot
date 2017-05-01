@@ -7,7 +7,7 @@ grep ^[0-9] typescript | awk '(length($15)) { print }' >samples
 ./avg --column=15 --combine=30 --id=1 --format=%.6f <samples >vbat.log
 ./avg --column=14 --combine=30 --id=1 --format=%.6f <samples >vref.log
 ./avg --every=1 --column=13 --combine=30 --id=1 --format=%.6f <samples >temp.log
-./counter-to-ppm --id=1 --column=7 --frequency=48000000 --number=8 --limit=10 <samples | awk '(length($4)) { print }' | ./avg --every=1 --column=4 --combine=30 --id=1 --format=%.3f >hse.log
+./counter-to-ppm --id=1 --column=7 --frequency=48000000 --number=8 --limit=10 <samples | awk '(length($4) && $1 >= 1493592110) { print }' | ./avg --every=1 --column=4 --combine=30 --id=1 --format=%.3f >hse.log
 ./counter-to-ppm-adjust16 --column=3 --adjust16=4 --id=1 --frequency=48000000 <samples | awk '($5 < 3 && $5 > -3 && $6 <100 && $6 >60) { print }' | ./avg --every=1 --column=6 --combine=30 --id=1 --format=%.3f >lse.log
 join -j1 temp.log hse.log >temp-hse.log
 join -j1 temp-hse.log lse.log >temp-lse.log
@@ -103,6 +103,16 @@ plot \
 EOF
 
 gnuplot <<EOF
+a=-0.888968
+b=-0.0206779
+c=0.00030986
+d=1.98162
+f(x) = a+b*(x-d)+c*(x-d)**2
+fit f(x) "temp-hse.log" using 3:5 via a,b,c,d
+fit_stddev = sqrt(FIT_WSSR / (FIT_NDF + 1 ))
+
+set label 1 gprintf("fit RMSE = %1.3f ppm", fit_stddev) at graph 0.9,0.9 right front
+
 set terminal png size 900,600
 set output "temp-hse.png"
 set grid
@@ -112,12 +122,25 @@ set xtic rotate by -45 scale 0
 set ylabel "frequency"
 set ytics format "%1.3f ppm" nomirror
 set title "12MHz TCXO"
-set key bottom left box
+set key bottom right box
 plot \
-'temp-hse.log' using 3:5 title 'hse' with points
+'temp-hse.log' using 3:5 title 'hse' with points, \
+ f(x) title "temp poly fit" with line, \
+ f(x)+fit_stddev title "poly fit + RMSE" with line, \
+ f(x)-fit_stddev title "poly fit - RMSE" with line
 EOF
 
 gnuplot <<EOF
+a=78.678
+c=-0.008641975
+d=86
+
+f(x) = a+c*(x-d)**2
+fit f(x) "temp-lse.log" using 3:(\$7-\$5) via a,c,d
+fit_stddev = sqrt(FIT_WSSR / (FIT_NDF + 1 ))
+
+set label 1 gprintf("fit RMSE = %1.3f ppm", fit_stddev) at graph 0.9,0.9 right front
+
 set terminal png size 900,600
 set output "temp-lse.png"
 set grid
@@ -129,7 +152,10 @@ set ytics format "%1.3f ppm" nomirror
 set title "32khz RTC"
 set key bottom left box
 plot \
-'temp-lse.log' using 3:(\$7-\$5) title 'lse' with points
+'temp-lse.log' using 3:(\$7-\$5) title 'lse' with points, \
+ f(x) title "temp poly fit" with line, \
+ f(x)+fit_stddev title "poly fit + RMSE" with line, \
+ f(x)-fit_stddev title "poly fit - RMSE" with line
 EOF
 
 gnuplot <<EOF
