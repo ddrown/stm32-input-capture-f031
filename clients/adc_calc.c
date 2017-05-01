@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <sys/time.h>
 
 #include "i2c_registers.h"
 #include "adc_calc.h"
