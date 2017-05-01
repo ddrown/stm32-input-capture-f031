@@ -136,7 +136,10 @@ void set_rtc(uint8_t data) {
       HAL_RTCEx_SetSmoothCalib(&hrtc, RTC_SMOOTHCALIB_PERIOD_32SEC, i2c_registers_page4.lse_calibration & RTC_SMOOTHCALIB_PLUSPULSES_SET, i2c_registers_page4.lse_calibration & 0b111111111);
       break;
     case SET_RTC_SUBSECOND:
-      HAL_RTCEx_SetSynchroShift(&hrtc, i2c_registers_page4.subseconds & RTC_SHIFTADD1S_SET, i2c_registers_page4.subseconds & 0b111111111111111);
+      HAL_RTCEx_SetSynchroShift(&hrtc,
+          (i2c_registers_page4.subseconds & 0b1000000000000000) ? RTC_SHIFTADD1S_SET : RTC_SHIFTADD1S_RESET,
+           i2c_registers_page4.subseconds & 0b0111111111111111
+           );
       break;
     default:
       break;
