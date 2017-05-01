@@ -83,9 +83,14 @@ struct i2c_registers_type_page3 {
 #define SET_RTC_CALIBRATION 2
 #define SET_RTC_SUBSECOND 3
 
+#define CALIBRATION_ADDCLK      0b1000000000
+#define CALIBRATION_SUBCLK_MASK 0b0111111111
+#define SUBSECOND_ADD1S       0b1000000000000000
+#define SUBSECOND_SUBCLK_MASK 0b0111111111111111
+
 struct i2c_registers_type_page4 {
   uint16_t subsecond_div; // number of counts in 1s
-  uint16_t subseconds; // read: subseconds (downcount), write: bit 16: +1s, bit 15..0: -N counts/PREDIV_S
+  uint16_t subseconds; // read: subseconds (downcount), write: bit 15: +1s, bit 14..0: -N counts/PREDIV_S
 
   uint32_t datetime; // bits 0..4: day, 5..8: month, 9..14: second, 15..20: minute, 21..25: hour
 
