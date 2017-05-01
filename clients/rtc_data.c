@@ -37,3 +37,13 @@ double rtc_to_double(struct i2c_registers_type_page4 *page4, struct tm *now) {
   timestamp = now_t + (page4->subsecond_div - page4->subseconds) / (double)page4->subsecond_div;
   return timestamp;
 }
+
+void tm_to_rtc(struct i2c_registers_type_page4 *page4, struct tm *now) {
+  page4->year = now->tm_year - 100;
+  if(page4->year > 99)
+    page4->year = page4->year - 100; // good till 2200
+  page4->datetime = 
+    ((uint32_t)now->tm_mday) | ((uint32_t)now->tm_mon + 1) << 5 |
+    ((uint32_t)now->tm_sec) << 9 | ((uint32_t)now->tm_min) << 15 |
+    ((uint32_t)now->tm_hour) << 21;
+}
