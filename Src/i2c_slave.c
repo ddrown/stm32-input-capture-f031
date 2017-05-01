@@ -12,6 +12,7 @@ struct i2c_registers_type_page3 i2c_registers_page3;
 struct i2c_registers_type_page4 i2c_registers_page4;
 
 static void *current_page = &i2c_registers;
+static uint8_t current_page_data[I2C_REGISTER_PAGE_SIZE];
 
 static void i2c_data_xmt(I2C_HandleTypeDef *hi2c);
 
@@ -37,6 +38,7 @@ void i2c_slave_start() {
   i2c_registers.primary_channel = 0;
   i2c_registers.primary_channel_HZ = DEFAULT_SOURCE_HZ;
   i2c_registers.version = I2C_REGISTER_VERSION;
+  memcpy(current_page_data, current_page, I2C_REGISTER_PAGE_SIZE);
 
   i2c_registers_page2.page_offset = I2C_REGISTER_PAGE2;
   i2c_registers_page2.ts_cal1 = *ts_cal1;
@@ -95,6 +97,10 @@ static void change_page(uint8_t data) {
       current_page = &i2c_registers;
       break;
   }
+
+  __disable_irq(); // copy with interrupts off to prevent the page's data from changing during read
+  memcpy(current_page_data, current_page, I2C_REGISTER_PAGE_SIZE);
+  __enable_irq();
 }
 
 static void i2c_data_rcv(uint8_t position, uint8_t data) {
@@ -128,11 +134,28 @@ static void i2c_data_rcv(uint8_t position, uint8_t data) {
     return;
   }
 
-  //TODO: page4
+  if(current_page == &i2c_registers_page4) {
+    uint8_t *p = (uint8_t *)&i2c_registers_page4;
+
+    if(position > 1 && position < 11) {
+      p[position] = data;
+    } else if(position == 11) {
+      set_rtc(data);
+    } else if(position > 11 && position < 20) {
+      p[position] = data;
+      if(position == 15) {
+        HAL_RTCEx_BKUPWrite(&hrtc, 0, i2c_registers_page4.backup_register[0]);
+      } else if(position == 19) {
+        HAL_RTCEx_BKUPWrite(&hrtc, 1, i2c_registers_page4.backup_register[1]);
+      }
+    }
+
+    return;
+  }
 }
 
 static void i2c_data_xmt(I2C_HandleTypeDef *hi2c) {
-  HAL_I2C_Slave_Sequential_Transmit_IT(hi2c, current_page, I2C_REGISTER_PAGE_SIZE, I2C_FIRST_FRAME);
+  HAL_I2C_Slave_Sequential_Transmit_IT(hi2c, current_page_data, I2C_REGISTER_PAGE_SIZE, I2C_FIRST_FRAME);
 }
 
 void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c) {

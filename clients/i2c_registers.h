@@ -90,7 +90,8 @@ struct i2c_registers_type_page4 {
   uint32_t datetime; // bits 0..4: day, 5..8: month, 9..14: second, 15..20: minute, 21..25: hour
 
   uint16_t lse_calibration; // bits 0..8: -N counts/32s, 9: +1count/2^11 (+488.281ppm)
-  uint16_t set_rtc; // write values SET_RTC_DATETIME, SET_RTC_CALIBRATION, SET_RTC_SUBSECOND
+  uint8_t year; // 0-99
+  uint8_t set_rtc; // write values SET_RTC_DATETIME, SET_RTC_CALIBRATION, SET_RTC_SUBSECOND
 // ^^^ 12 bytes
 
   uint32_t backup_register[2]; // 2 of the 5 rtc backup registers
@@ -99,7 +100,7 @@ struct i2c_registers_type_page4 {
   uint32_t LSE_tim2_irq;
   uint16_t LSE_tim14_cap;
 
-  uint8_t year; // 0-99
+  uint8_t reserved;
   uint8_t page_offset;
 // ^^^ 12+20=32 bytes
 };

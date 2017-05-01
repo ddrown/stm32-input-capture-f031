@@ -94,11 +94,8 @@ void print_timer_status() {
 }
 
 void set_rtc_registers() {
-  uint32_t start, end;
   RTC_TimeTypeDef sTime;
   RTC_DateTypeDef sDate;
-
-  start = __HAL_TIM_GET_COUNTER(&htim2);
 
   HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
   HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
@@ -109,8 +106,39 @@ void set_rtc_registers() {
     ((uint32_t)sDate.Date) | ((uint32_t)sDate.Month) << 5 |
     ((uint32_t)sTime.Seconds) << 9 | ((uint32_t)sTime.Minutes) << 15 |
     ((uint32_t)sTime.Hours) << 21;
+}
 
-  end = __HAL_TIM_GET_COUNTER(&htim2);
+static void set_rtc_datetime() {
+  RTC_TimeTypeDef sTime;
+  RTC_DateTypeDef sDate;
 
-  i2c_registers_page4.backup_register[0] = end - start; // TODO: debug
+  sTime.Hours =   (i2c_registers_page4.datetime & 0b00000011111000000000000000000000) >> 21;
+  sTime.Minutes = (i2c_registers_page4.datetime & 0b00000000000111111000000000000000) >> 15;
+  sTime.Seconds = (i2c_registers_page4.datetime & 0b00000000000000000111111000000000) >> 9;
+  sTime.TimeFormat = 0;
+  sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+  sTime.StoreOperation = RTC_STOREOPERATION_RESET;
+
+  sDate.Month = (i2c_registers_page4.datetime & 0b00000000000000000000000111100000) >> 5;
+  sDate.Date =  (i2c_registers_page4.datetime & 0b00000000000000000000000000011111);
+  sDate.Year =  i2c_registers_page4.year;
+  sDate.WeekDay = 1;
+  HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN); 
+  HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN); 
+}
+
+void set_rtc(uint8_t data) {
+  switch(data) {
+    case SET_RTC_DATETIME:
+      set_rtc_datetime();
+      break;
+    case SET_RTC_CALIBRATION:
+      HAL_RTCEx_SetSmoothCalib(&hrtc, RTC_SMOOTHCALIB_PERIOD_32SEC, i2c_registers_page4.lse_calibration & RTC_SMOOTHCALIB_PLUSPULSES_SET, i2c_registers_page4.lse_calibration & 0b111111111);
+      break;
+    case SET_RTC_SUBSECOND:
+      HAL_RTCEx_SetSynchroShift(&hrtc, i2c_registers_page4.subseconds & RTC_SHIFTADD1S_SET, i2c_registers_page4.subseconds & 0b111111111111111);
+      break;
+    default:
+      break;
+  }
 }

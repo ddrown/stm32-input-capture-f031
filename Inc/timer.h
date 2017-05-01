@@ -10,5 +10,6 @@ extern TIM_HandleTypeDef htim14;
 void print_timer_status();
 void timer_start();
 void set_rtc_registers();
+void set_rtc(uint8_t data);
 
 #endif
