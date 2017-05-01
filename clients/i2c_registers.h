@@ -18,6 +18,9 @@
 #define SAVE_STATUS_ERASE_FAIL 2
 #define SAVE_STATUS_WRITE_FAIL 3
 
+#define I2C_REGISTER_PRIMARY_CHANNEL 28
+#define I2C_REGISTER_PRIMARY_CHANNEL_HZ 29
+
 struct i2c_registers_type {
   // start 0 len 4
   uint32_t milliseconds_now;

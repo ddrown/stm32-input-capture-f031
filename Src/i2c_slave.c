@@ -107,8 +107,8 @@ static void i2c_data_rcv(uint8_t position, uint8_t data) {
     uint8_t *p = (uint8_t *)&i2c_registers;
 
     switch(position) {
-      case I2C_REGISTER_OFFSET_HZ_HI:
-      case I2C_REGISTER_OFFSET_HZ_LO:
+      case I2C_REGISTER_PRIMARY_CHANNEL:
+      case I2C_REGISTER_PRIMARY_CHANNEL_HZ:
         p[position] = data;
         break;
     }

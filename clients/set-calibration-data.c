@@ -72,4 +72,39 @@ int main(int argc, char **argv) {
     write_i2c(fd, set_page3, I2C_PAGE3_WRITE_LENGTH+1);
     unlock_i2c(fd);
   }
+
+  if(strcmp(argv[1], "set-primary") == 0) {
+    uint8_t set_page[2];
+    uint8_t set_page1[3];
+
+    if(argc != 4) {
+      printf("set-primary arguments: ch hz\n");
+      exit(1);
+    }
+
+    set_page1[0] = I2C_REGISTER_PRIMARY_CHANNEL;
+    set_page1[1] = atoi(argv[2])-1; // channel 1 = 0
+    set_page1[2] = atoi(argv[3]); // hz
+
+    set_page[0] = I2C_REGISTER_OFFSET_PAGE;
+    set_page[1] = I2C_REGISTER_PAGE1;
+    lock_i2c(fd);
+    write_i2c(fd, set_page, sizeof(set_page));
+    write_i2c(fd, set_page1, sizeof(set_page1));
+    unlock_i2c(fd);
+  }
+
+  if(strcmp(argv[1], "get-primary") == 0) {
+    uint8_t set_page[2];
+    struct i2c_registers_type page1;
+
+    set_page[0] = I2C_REGISTER_OFFSET_PAGE;
+    set_page[1] = I2C_REGISTER_PAGE1;
+    lock_i2c(fd);
+    write_i2c(fd, set_page, sizeof(set_page));
+    read_i2c(fd, &page1, sizeof(page1));
+    unlock_i2c(fd);
+
+    printf("primary channel = %u hz = %u\n", page1.primary_channel+1, page1.primary_channel_HZ);
+  }
 }
