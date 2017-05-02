@@ -153,7 +153,7 @@ int main(int argc, char **argv) {
 
   if(strcmp(argv[1], "setcalibration") == 0) {
     if(argc != 4) {
-      printf("setcalibration arguments: [1=+488ppm,0=no clks added/32s] [0..511 clks removed/32s (0.953ppb each)]\n");
+      printf("setcalibration arguments: [1=+488ppm,0=no clks added/32s] [0..511 clks removed/32s (0.953ppm each)]\n");
       exit(1);
     }
     setcalibration(fd, atoi(argv[2]), atoi(argv[3]));
