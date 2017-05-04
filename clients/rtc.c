@@ -97,48 +97,66 @@ static void setsubsecond(int fd, uint32_t addclk, uint32_t subclk) {
   unlock_i2c(fd);
 }
 
+static int compare_d(const void *a_p, const void *b_p) {
+  double *a = (double *)a_p;
+  double *b = (double *)b_p;
+
+  if(*a < *b) {
+    return -1;
+  } else if(*a > *b) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+// note: changes the order of values
+static double median_d(double *values, int length) {
+  qsort(values, length, sizeof(double), compare_d);
+
+  return values[length/2];
+}
+
 #define POLLS 3
 static void sync_rtc(int fd) {
-  struct timeval rtc[3];
-  struct i2c_registers_type_page4 page4[3];
-  double local_ts[3], rtc_ts[3], diff[3], avg;
+  struct timeval rtc[POLLS];
+  struct i2c_registers_type_page4 page4[POLLS];
+  double local_ts[POLLS], rtc_ts[POLLS], diff[POLLS], median;
 
-  avg = 0;
-  for(uint8_t i = 0; i < 3; i++) {
+  for(uint8_t i = 0; i < POLLS; i++) {
     get_rtc(fd, &rtc[i], &page4[i]);
     rtc_ts[i] = rtc_to_double(&page4[i],NULL);
     local_ts[i] = rtc[i].tv_sec + rtc[i].tv_usec / 1000000.0;
     diff[i] = local_ts[i]-rtc_ts[i]; // positive: rtc slow, negative: rtc fast
     printf("sample %d value %.3f\n", i, diff[i]);
-    avg += diff[i];
-    usleep(1000); 
+    usleep(1500); 
   }
 
-  avg = avg/(double)POLLS;
+  median = median_d(diff, POLLS);
 
-  printf("average %.4f\n", avg);
-  while(fabs(avg) > 1) {
-    if(avg > 0) {
+  printf("median %.4f\n", median);
+  while(fabs(median) > 1) {
+    if(median > 0) {
       // rtc 1s+ slow
       setsubsecond(fd, 1, 0);
-      avg -= 1;
+      median -= 1;
       printf("set +1s\n");
     } else {
       // rtc 1s+ fast
       setsubsecond(fd, 0, 1024);
-      avg += 1;
+      median += 1;
       printf("set -1s\n");
     }
     usleep(1200000); // allow setsubsecond to finish
   }
-  if(avg > 0.0009) { 
+  if(median > 0.0009) { 
     // rtc slow
-    setsubsecond(fd, 1, 1024*(1-avg));
-    printf("set +1s -%.0f counts\n", 1024*(1-avg));
-  } else if(avg < -0.0009) {
+    setsubsecond(fd, 1, 1024*(1-median));
+    printf("set +1s -%.0f counts\n", 1024*(1-median));
+  } else if(median < -0.0009) {
     // rtc fast
-    setsubsecond(fd, 0, -1024*avg);
-    printf("set -%.0f counts\n", -1024*avg);
+    setsubsecond(fd, 0, -1024*median);
+    printf("set -%.0f counts\n", -1024*median);
   } else {
     printf("no change\n");
   }
