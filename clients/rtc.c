@@ -4,6 +4,8 @@
 #include <string.h>
 #include <time.h>
 #include <sys/time.h>
+#include <unistd.h>
+#include <math.h>
 
 #include "i2c.h"
 #include "i2c_registers.h"
@@ -95,6 +97,53 @@ static void setsubsecond(int fd, uint32_t addclk, uint32_t subclk) {
   unlock_i2c(fd);
 }
 
+#define POLLS 3
+static void sync_rtc(int fd) {
+  struct timeval rtc[3];
+  struct i2c_registers_type_page4 page4[3];
+  double local_ts[3], rtc_ts[3], diff[3], avg;
+
+  avg = 0;
+  for(uint8_t i = 0; i < 3; i++) {
+    get_rtc(fd, &rtc[i], &page4[i]);
+    rtc_ts[i] = rtc_to_double(&page4[i],NULL);
+    local_ts[i] = rtc[i].tv_sec + rtc[i].tv_usec / 1000000.0;
+    diff[i] = local_ts[i]-rtc_ts[i]; // positive: rtc slow, negative: rtc fast
+    printf("sample %d value %.3f\n", i, diff[i]);
+    avg += diff[i];
+    usleep(1000); 
+  }
+
+  avg = avg/(double)POLLS;
+
+  printf("average %.4f\n", avg);
+  while(fabs(avg) > 1) {
+    if(avg > 0) {
+      // rtc 1s+ slow
+      setsubsecond(fd, 1, 0);
+      avg -= 1;
+      printf("set +1s\n");
+    } else {
+      // rtc 1s+ fast
+      setsubsecond(fd, 0, 1024);
+      avg += 1;
+      printf("set -1s\n");
+    }
+    usleep(1200000); // allow setsubsecond to finish
+  }
+  if(avg > 0.0009) { 
+    // rtc slow
+    setsubsecond(fd, 1, 1024*(1-avg));
+    printf("set +1s -%.0f counts\n", 1024*(1-avg));
+  } else if(avg < -0.0009) {
+    // rtc fast
+    setsubsecond(fd, 0, -1024*avg);
+    printf("set -%.0f counts\n", -1024*avg);
+  } else {
+    printf("no change\n");
+  }
+}
+
 static void setcalibration(int fd, uint32_t addclk, uint32_t subclk) {
   struct i2c_registers_type_page4 page4;
   uint8_t set_page[2];
@@ -128,7 +177,7 @@ int main(int argc, char **argv) {
   fd = open_i2c(I2C_ADDR); 
 
   if(argc == 1) {
-    printf("commands: get, set, setsubsecond, setcalibration\n");
+    printf("commands: get, set, setsubsecond, setcalibration, sync\n");
     exit(1);
   }
 
@@ -159,4 +208,12 @@ int main(int argc, char **argv) {
     setcalibration(fd, atoi(argv[2]), atoi(argv[3]));
     return 0;
   }
+
+  if(strcmp(argv[1], "sync") == 0) {
+    sync_rtc(fd);
+    return 0;
+  }
+
+  printf("unknown command\n");
+  exit(1);
 }
