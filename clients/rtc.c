@@ -117,7 +117,7 @@ static double median_d(double *values, int length) {
   return values[length/2];
 }
 
-#define POLLS 3
+#define POLLS 5
 static void sync_rtc(int fd) {
   struct timeval rtc[POLLS];
   struct i2c_registers_type_page4 page4[POLLS];
@@ -129,7 +129,7 @@ static void sync_rtc(int fd) {
     local_ts[i] = rtc[i].tv_sec + rtc[i].tv_usec / 1000000.0;
     diff[i] = local_ts[i]-rtc_ts[i]; // positive: rtc slow, negative: rtc fast
     printf("sample %d value %.3f\n", i, diff[i]);
-    usleep(1500); 
+    usleep(10541); 
   }
 
   median = median_d(diff, POLLS);
