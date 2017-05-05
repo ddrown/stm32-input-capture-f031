@@ -12,7 +12,7 @@
 #include "rtc_data.h"
 
 float lse_calibration_to_ppm(uint16_t calib) {
-  return (calib & CALIBRATION_ADDCLK) ? 488.281 : 0.0 - 0.953 * (calib & CALIBRATION_SUBCLK_MASK);
+  return (calib & CALIBRATION_ADDCLK) ? 488.281 : 0.0 - 0.953674 * (calib & CALIBRATION_SUBCLK_MASK);
 }
 
 static void get(int fd) {
