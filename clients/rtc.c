@@ -15,10 +15,49 @@ float lse_calibration_to_ppm(uint16_t calib) {
   return (calib & CALIBRATION_ADDCLK) ? 488.281 : 0.0 - 0.953674 * (calib & CALIBRATION_SUBCLK_MASK);
 }
 
+static int compare_d(const void *a_p, const void *b_p) {
+  double *a = (double *)a_p;
+  double *b = (double *)b_p;
+
+  if(*a < *b) {
+    return -1;
+  } else if(*a > *b) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+// note: changes the order of values
+static double median_d(double *values, int length) {
+  qsort(values, length, sizeof(double), compare_d);
+
+  return values[length/2];
+}
+
+#define POLLS 5
+#define POLL_SLEEP_US 10541
+static double poll_median(int fd) {
+  struct timeval rtc[POLLS];
+  struct i2c_registers_type_page4 page4[POLLS];
+  double local_ts[POLLS], rtc_ts[POLLS], diff[POLLS];
+
+  for(uint8_t i = 0; i < POLLS; i++) {
+    get_rtc(fd, &rtc[i], &page4[i]);
+    rtc_ts[i] = rtc_to_double(&page4[i],NULL);
+    local_ts[i] = rtc[i].tv_sec + rtc[i].tv_usec / 1000000.0;
+    diff[i] = local_ts[i]-rtc_ts[i]; // positive: rtc slow, negative: rtc fast
+    printf("sample %d value %.3f\n", i, diff[i]);
+    usleep(POLL_SLEEP_US); 
+  }
+
+  return median_d(diff, POLLS);
+}
+
 static void get(int fd) {
   struct timeval rtc;
   struct i2c_registers_type_page4 page4;
-  double local_ts, rtc_ts, diff;
+  double rtc_ts, median;
   struct tm now;
   float ppm;
 
@@ -26,18 +65,17 @@ static void get(int fd) {
 
   rtc_ts = rtc_to_double(&page4,&now);
 
-  printf("ss_d = %u ss = %u dt = %u y = %u\n", page4.subsecond_div, page4.subseconds, page4.datetime, page4.year);
-  printf("%u:%u:%u %u/%u/%u\n", 
+  median = poll_median(fd);
+
+  printf("raw: ss_d = %u ss = %u dt = %u y = %u\n", page4.subsecond_div, page4.subseconds, page4.datetime, page4.year);
+  printf("timedate: %u:%u:%u %u/%u/%u\n", 
       now.tm_hour, now.tm_min, now.tm_sec,
       now.tm_mon+1, now.tm_mday, now.tm_year+1900
       );
   ppm = lse_calibration_to_ppm(page4.lse_calibration);
-  printf("calib = %u (%.3f ppm) set = %u bk1 = %u bk2 = %u\n", page4.lse_calibration, ppm, page4.set_rtc, page4.backup_register[0], page4.backup_register[1]);
-  printf("LSE: milli=%u tim2=%u tim14=%u\n", page4.LSE_millis_irq, page4.LSE_tim2_irq, page4.LSE_tim14_cap);
-
-  local_ts = rtc.tv_sec + rtc.tv_usec / 1000000.0;
-  diff = local_ts-rtc_ts;
-  printf("%.6f %.3f %.3f %s\n", local_ts, rtc_ts, diff, (diff < 0) ? "fast" : "slow");
+  printf("calibrate = %u (%.3f ppm) set = %u bk1 = %u bk2 = %u\n", page4.lse_calibration, ppm, page4.set_rtc, page4.backup_register[0], page4.backup_register[1]);
+  printf("LSE/TIM14: milli=%u tim2=%u tim14=%u\n", page4.LSE_millis_irq, page4.LSE_tim2_irq, page4.LSE_tim14_cap);
+  printf("time:%.3f offset:%.3f %s\n", rtc_ts, median, (median < 0) ? "fast" : "slow");
 }
 
 static void set(int fd) {
@@ -97,55 +135,34 @@ static void setsubsecond(int fd, uint32_t addclk, uint32_t subclk) {
   unlock_i2c(fd);
 }
 
-static int compare_d(const void *a_p, const void *b_p) {
-  double *a = (double *)a_p;
-  double *b = (double *)b_p;
-
-  if(*a < *b) {
-    return -1;
-  } else if(*a > *b) {
-    return 1;
-  } else {
-    return 0;
-  }
-}
-
-// note: changes the order of values
-static double median_d(double *values, int length) {
-  qsort(values, length, sizeof(double), compare_d);
-
-  return values[length/2];
-}
-
-#define POLLS 5
 static void sync_rtc(int fd) {
-  struct timeval rtc[POLLS];
-  struct i2c_registers_type_page4 page4[POLLS];
-  double local_ts[POLLS], rtc_ts[POLLS], diff[POLLS], median;
+  double median;
+  FILE *log;
 
-  for(uint8_t i = 0; i < POLLS; i++) {
-    get_rtc(fd, &rtc[i], &page4[i]);
-    rtc_ts[i] = rtc_to_double(&page4[i],NULL);
-    local_ts[i] = rtc[i].tv_sec + rtc[i].tv_usec / 1000000.0;
-    diff[i] = local_ts[i]-rtc_ts[i]; // positive: rtc slow, negative: rtc fast
-    printf("sample %d value %.3f\n", i, diff[i]);
-    usleep(10541); 
+  log = fopen("/var/lib/pihatrtc/last_sync", "w");
+  if(!log) {
+    printf("failed to open /var/lib/pihatrtc/last_sync\n");
+    exit(1);
   }
 
-  median = median_d(diff, POLLS);
+  median = poll_median(fd);
 
+  fprintf(log,"start %ld\n", time(NULL));
   printf("median %.4f\n", median);
+  fprintf(log,"median %.4f\n", median);
   while(fabs(median) > 1) {
     if(median > 0) {
       // rtc 1s+ slow
       setsubsecond(fd, 1, 0);
       median -= 1;
       printf("set +1s\n");
+      fprintf(log,"set +1s\n");
     } else {
       // rtc 1s+ fast
       setsubsecond(fd, 0, 1024);
       median += 1;
       printf("set -1s\n");
+      fprintf(log,"set -1s\n");
     }
     usleep(1200000); // allow setsubsecond to finish
   }
@@ -153,13 +170,47 @@ static void sync_rtc(int fd) {
     // rtc slow
     setsubsecond(fd, 1, 1024*(1-median));
     printf("set +1s -%.0f counts\n", 1024*(1-median));
+    fprintf(log,"set +1s -%.0f counts\n", 1024*(1-median));
   } else if(median < -0.0009) {
     // rtc fast
     setsubsecond(fd, 0, -1024*median);
     printf("set -%.0f counts\n", -1024*median);
+    fprintf(log,"set -%.0f counts\n", -1024*median);
   } else {
     printf("no change\n");
+    fprintf(log,"no change\n");
   }
+}
+
+static void set_system(int fd) {
+  double median, rtc_ts, local_ts_before, local_ts_after;
+  struct timeval rtc, jumptime, adjust_time;
+  struct i2c_registers_type_page4 page4;
+  struct tm now;
+
+  get_rtc(fd, &rtc, &page4);
+
+  rtc_ts = rtc_to_double(&page4,&now);
+
+  local_ts_before = rtc.tv_sec + rtc.tv_usec / 1000000.0;
+  gettimeofday(&adjust_time, NULL);
+  local_ts_after = adjust_time.tv_sec + adjust_time.tv_usec / 1000000.0;
+  rtc_ts += (local_ts_after-local_ts_before); // handle the milliseconds spent speaking i2c
+
+  jumptime.tv_sec = rtc_ts;
+  jumptime.tv_usec = (uint64_t)(rtc_ts * 1000000.0) % 1000000;
+
+  printf("set time: %lu.%06lu\n", jumptime.tv_sec, jumptime.tv_usec);
+  printf("was: %lu.%06lu\n", rtc.tv_sec, rtc.tv_usec);
+
+  if(settimeofday(&jumptime, NULL) != 0) {
+    perror("settimeofday");
+    exit(1);
+  }
+
+  median = poll_median(fd);
+
+  printf("median %.6f\n", median);
 }
 
 static void setcalibration(int fd, uint32_t addclk, uint32_t subclk) {
@@ -192,10 +243,24 @@ int main(int argc, char **argv) {
 
   setup_rtc_tz();
 
+  if(argc > 1 && strcmp(argv[1], "boot") == 0) {
+    for(uint8_t i = 0; i < 40; i++) {
+      if(access("/dev/i2c-1", F_OK) == 0) {
+	break;
+      }
+      if(i == 0) {
+        printf("/dev/i2c-1 does not exist, sleeping up to 2s\n");
+      }
+      usleep(50000);
+    }
+    argc--;
+    argv = argv + 1;
+  }
+
   fd = open_i2c(I2C_ADDR); 
 
   if(argc == 1) {
-    printf("commands: get, set, setsubsecond, setcalibration, sync\n");
+    printf("commands: get, set, setsystem, setsubsecond, setcalibration, sync\n");
     exit(1);
   }
 
@@ -229,6 +294,11 @@ int main(int argc, char **argv) {
 
   if(strcmp(argv[1], "sync") == 0) {
     sync_rtc(fd);
+    return 0;
+  }
+
+  if(strcmp(argv[1], "setsystem") == 0) {
+    set_system(fd);
     return 0;
   }
 

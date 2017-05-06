@@ -1,0 +1,15 @@
+[Unit]
+Description=Synchronise Pi Hat Hardware Clock and System Clock
+DefaultDependencies=no
+Before=basic.target shutdown.target
+After=systemd-modules-load.service udev-finish.service
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/rtc boot setsystem
+ExecStop=/usr/local/sbin/rtc sync
+
+[Install]
+WantedBy=sysinit.target

@@ -32,7 +32,7 @@ double rtc_to_double(struct i2c_registers_type_page4 *page4, struct tm *now) {
   now->tm_yday = 0;
   now->tm_isdst = 0;
 
-  now_t = mktime(now);
+  now_t = timegm(now);
 
   timestamp = now_t + (page4->subsecond_div - page4->subseconds) / (double)page4->subsecond_div;
   return timestamp;

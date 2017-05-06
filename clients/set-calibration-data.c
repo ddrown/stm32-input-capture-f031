@@ -24,7 +24,7 @@ int main(int argc, char **argv) {
   fd = open_i2c(I2C_ADDR); 
 
   if(argc == 1) {
-    printf("commands: get, set\n");
+    printf("commands: get, set, get-primary, set-primary\n");
     exit(1);
   }
 
