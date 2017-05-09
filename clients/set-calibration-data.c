@@ -29,16 +29,11 @@ int main(int argc, char **argv) {
   }
 
   if(strcmp(argv[1], "get") == 0) {
-    uint8_t set_page[2];
+    struct tempcomp_data data;
 
-    set_page[0] = I2C_REGISTER_OFFSET_PAGE;
-    set_page[1] = I2C_REGISTER_PAGE3;
-    lock_i2c(fd);
-    write_i2c(fd, set_page, sizeof(set_page));
-    read_i2c(fd, &page3, sizeof(page3));
-    unlock_i2c(fd);
+    get_i2c_page3(fd, &page3, &data);
 
-    printf("a = %g, b = %g, c = %g, d = %g\n", ntohf(page3.tcxo_a), ntohf(page3.tcxo_b), ntohf(page3.tcxo_c), ntohf(page3.tcxo_d));
+    printf("a = %g, b = %g, c = %g, d = %g\n", data.tcxo_a, data.tcxo_b, data.tcxo_c, data.tcxo_d);
     printf("max = %u F min = %d F\n", page3.max_calibration_temp, page3.min_calibration_temp);
     printf("rmse = %u ppb\n", page3.rmse_fit);
     printf("save: %u status: %s (%u)\n", page3.save, save_status_str(page3.save_status), page3.save_status);

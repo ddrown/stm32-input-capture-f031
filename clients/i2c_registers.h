@@ -3,7 +3,7 @@
 
 #define I2C_ADDR 0x4
 #define EXPECTED_FREQ 48000000
-#define INPUT_CHANNELS 3
+#define INPUT_CHANNELS 4
 
 // i2c interface
 #define I2C_REGISTER_OFFSET_PAGE 31
@@ -79,6 +79,13 @@ struct i2c_registers_type_page3 {
   uint8_t page_offset;
 };
 
+struct tempcomp_data {
+  float tcxo_a;
+  float tcxo_b;
+  float tcxo_c;
+  float tcxo_d;
+};
+
 #define SET_RTC_DATETIME 1
 #define SET_RTC_CALIBRATION 2
 #define SET_RTC_SUBSECOND 3
@@ -112,6 +119,7 @@ struct i2c_registers_type_page4 {
 
 void get_i2c_structs(int fd, struct i2c_registers_type *i2c_registers, struct i2c_registers_type_page2 *i2c_registers_page2);
 void get_rtc(int fd, struct timeval *setpage, struct i2c_registers_type_page4 *i2c_registers_page4);
+void get_i2c_page3(int fd, struct i2c_registers_type_page3 *i2c_registers_page3, struct tempcomp_data *data);
 float last_i2c_time();
 
 #endif

@@ -6,14 +6,15 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <ctype.h>
 
 #include "i2c.h"
 #include "timespec.h"
 #include "i2c_registers.h"
 #include "adc_calc.h"
-#include "tcxo_calibration.h"
 
-// current code assumptions: channel 1 never stops
+// current code assumptions: main channel never stops
+static int main_channel = 1, main_channel_hz = 50;
 
 #define AVERAGING_CYCLES 65
 #define PPM_INVALID -1000000.0
@@ -22,12 +23,14 @@
 #define TCXO_TEMPCOMP_FILE "/run/tcxo"
 
 // status_flags bitfields
-#define STATUS_CH1_WRAPS       0b11
-#define STATUS_CH2_WRAPS     0b1100
-#define STATUS_CH3_WRAPS   0b110000
-#define STATUS_CH2_FAILED 0b1000000
+#define STATUS_BAD_CH1        0b1
+#define STATUS_BAD_CH2       0b10
+#define STATUS_BAD_CH3      0b100
+#define STATUS_BAD_CH4     0b1000
+// BAD_CHANNEL_STATUS takes 0-indexed channels
+#define BAD_CHANNEL_STATUS(x) (1 << x)
 
-void print_ppm(float ppm) {
+static void print_ppm(float ppm) {
   if(ppm < 500 && ppm > -500) {
     printf("%1.3f ", ppm);
   } else {
@@ -35,11 +38,10 @@ void print_ppm(float ppm) {
   }
 }
 
-void write_tcxo_ppm(float ppm) {
+static void write_tcxo_ppm(float ppm) {
   FILE *tcxo;
 
   if(ppm > 500 || ppm < -500) {
-    printf("- ");
     return;
   }
 
@@ -51,11 +53,10 @@ void write_tcxo_ppm(float ppm) {
   fprintf(tcxo, "%1.3f\n", ppm);
   fclose(tcxo);
   rename(TCXO_TEMPCOMP_TEMPFILE, TCXO_TEMPCOMP_FILE);
-
-  printf("%1.3f ", ppm);
 }
 
-void add_offset_cycles(double added_offset_ns, struct timespec *cycles, uint16_t *first_cycle, uint16_t *last_cycle) {
+// modifies cycles, first_cycle, last_cycle
+static void store_added_offset(double added_offset_ns, struct timespec *cycles, uint16_t *first_cycle, uint16_t *last_cycle) {
   struct timespec *previous_cycle = NULL;
   uint16_t this_cycle_i;
 
@@ -76,7 +77,7 @@ void add_offset_cycles(double added_offset_ns, struct timespec *cycles, uint16_t
   *last_cycle = this_cycle_i;
 }
 
-float calc_ppm(struct timespec *end, struct timespec *start, uint16_t seconds) {
+static float calc_ppm(struct timespec *end, struct timespec *start, uint16_t seconds) {
   double diff_s;
   struct timespec diff;
   diff.tv_sec = end->tv_sec;
@@ -89,29 +90,7 @@ float calc_ppm(struct timespec *end, struct timespec *start, uint16_t seconds) {
   return ppm;
 }
 
-// TODO: dealing with 2s and longer intervals
-uint8_t cycles_wrap(uint32_t *this_cycles, uint32_t previous_cycles, int32_t *diff, const struct i2c_registers_type *i2c_registers, uint8_t counter) {
-  uint8_t wrap = 0;
-  *diff = *this_cycles - previous_cycles - EXPECTED_FREQ;
-
-  if(i2c_registers->tim3_at_cap[counter] > i2c_registers->tim3_at_irq[counter]) {
-    if(*diff > 41535) { // allow for +/-500ppm
-      wrap = 1;
-      *this_cycles -= 65536;
-      *diff -= 65536;
-    }
-  } else if(i2c_registers->tim3_at_cap[counter] > 65300) { // check for wrap if it's close
-    if(*diff > 41535) { // allow for +/-500ppm
-      wrap = 2;
-      *this_cycles -= 65536;
-      *diff -= 65536;
-    }
-  }
-
-  return wrap;
-}
-
-uint16_t wrap_add(int16_t a, int16_t b, uint16_t modulus) {
+static uint16_t wrap_add(int16_t a, int16_t b, uint16_t modulus) {
   a = a + b;
   if(a < 0) {
     a += modulus;
@@ -119,11 +98,11 @@ uint16_t wrap_add(int16_t a, int16_t b, uint16_t modulus) {
   return a;
 }
 
-uint16_t wrap_sub(int16_t a, int16_t b, uint16_t modulus) {
+static uint16_t wrap_sub(int16_t a, int16_t b, uint16_t modulus) {
   return wrap_add(a, -1 * b, modulus);
 }
 
-float show_ppm(int16_t number_points, uint16_t last_cycle_index, uint16_t seconds, struct timespec *cycles) {
+static float show_ppm(int16_t number_points, uint16_t last_cycle_index, uint16_t seconds, struct timespec *cycles) {
   float ppm = PPM_INVALID; // default: invalid PPM
 
   if(number_points >= seconds) {
@@ -137,7 +116,7 @@ float show_ppm(int16_t number_points, uint16_t last_cycle_index, uint16_t second
   return ppm;
 }
 
-uint32_t calculate_sleep_ms(uint32_t milliseconds_now, uint32_t milliseconds_irq) {
+static uint32_t calculate_sleep_ms(uint32_t milliseconds_now, uint32_t milliseconds_irq) {
   uint32_t sleep_ms = 1000 + AIM_AFTER_MS - (milliseconds_now - milliseconds_irq);
   if(sleep_ms > 1000+AIM_AFTER_MS) {
     sleep_ms = 1000+AIM_AFTER_MS;
@@ -147,85 +126,72 @@ uint32_t calculate_sleep_ms(uint32_t milliseconds_now, uint32_t milliseconds_irq
   return sleep_ms;
 }
 
-// modifies this_cycles, wrap, and added_offset_ns
-int add_cycles(uint32_t *this_cycles, uint8_t *wrap, double *added_offset_ns, uint8_t has_history, const struct i2c_registers_type *i2c_registers) {
-  static uint32_t previous_cycles[INPUT_CHANNELS] = {0,0,0};
-  int retval = 0;
-
-  // we can check for wraps if we have history
-  if(has_history || (previous_cycles[0] > 0)) {
-    int32_t diff[INPUT_CHANNELS];
-    for(uint8_t i = 0; i < INPUT_CHANNELS; i++) {
-      wrap[i] = cycles_wrap(&this_cycles[i], previous_cycles[i], &diff[i], i2c_registers, i);
-      added_offset_ns[i] = diff[i] * 1000000000.0 / EXPECTED_FREQ;
-    }
-    retval = 1;
-  }
+// modifies added_offset_ns, status_flags
+static int add_cycles(uint32_t *status_flags, double *added_offset_ns, const struct i2c_registers_type *i2c_registers) {
+  static uint32_t previous_cycles[INPUT_CHANNELS] = {0,0,0,0};
+  static uint8_t previous_count[INPUT_CHANNELS] = {0,0,0,0};
+  static uint32_t primary_ms_last = 0;
+  int retval = 1;
 
   for(uint8_t i = 0; i < INPUT_CHANNELS; i++) {
-    previous_cycles[i] = this_cycles[i];
+    int32_t diff;
+    
+    if(i == main_channel-1) {
+      uint32_t milliseconds = i2c_registers->milliseconds_irq_primary - primary_ms_last;
+      if(milliseconds < 2000 && milliseconds > 900) {
+        diff = i2c_registers->tim2_at_cap[i] - previous_cycles[i] - EXPECTED_FREQ;
+        added_offset_ns[i] = diff * 1000000000.0 / EXPECTED_FREQ;
+      } else {
+        added_offset_ns[i] = 0;
+        retval = 0;
+	*status_flags |= BAD_CHANNEL_STATUS(i);
+      }
+      primary_ms_last = i2c_registers->milliseconds_irq_primary;
+    } else {
+      uint8_t diff_count = i2c_registers->ch_count[i] - previous_count[i];
+
+      if(diff_count == 1 || diff_count == 2) { // treating count as # of seconds, assume 1s/2s=ok, other values=invalid
+	diff = i2c_registers->tim2_at_cap[i] - previous_cycles[i] - (EXPECTED_FREQ * diff_count);
+	added_offset_ns[i] = diff * 1000000000.0 / (EXPECTED_FREQ * diff_count);
+      } else {
+	added_offset_ns[i] = 0;
+	*status_flags |= BAD_CHANNEL_STATUS(i);
+      }
+    }
+
+    previous_cycles[i] = i2c_registers->tim2_at_cap[i];
+    previous_count[i] = i2c_registers->ch_count[i];
   }
 
   return retval;
 }
 
-// modifies this_cycles
-void combine_tim1_tim3(uint32_t *this_cycles, const struct i2c_registers_type *i2c_registers) {
-  for(uint8_t i = 0; i < INPUT_CHANNELS; i++) {
-    this_cycles[i] = ((uint32_t)i2c_registers->tim1_at_irq[i]) << 16;
-    this_cycles[i] += i2c_registers->tim3_at_cap[i];
-  }
-}
-
-// modifies sleep_ms
-// at 500ppm, this estimates the next update within 0.5ms
-void adjust_sleep_ms(uint32_t *sleep_ms, const uint32_t *this_cycles) {
-  int32_t aiming_cycles = EXPECTED_FREQ / 1000 * AIM_AFTER_MS;
-  uint32_t estimated_cycles_after_sleep = this_cycles[0] + EXPECTED_FREQ + aiming_cycles;
-  int32_t negative_margin = aiming_cycles - EXPECTED_FREQ;
-
-  for(uint8_t i = 0; i < INPUT_CHANNELS; i++) {
-    uint32_t estimated_cycles = this_cycles[i] + EXPECTED_FREQ;
-    int32_t diff_cycles = estimated_cycles-estimated_cycles_after_sleep;
-
-    if(diff_cycles < negative_margin) { // if we're looking at the wrong edge, adjust it forward 1 second
-      diff_cycles += EXPECTED_FREQ;
-    }
-    if(abs(diff_cycles) < aiming_cycles) {
-      // if it's expected within the +/-AIM_AFTER_MS window, move the window forward
-      estimated_cycles_after_sleep += aiming_cycles;
-      *sleep_ms += AIM_AFTER_MS;
-      // TODO: should this restart the window calculation?
-    }
-  }
-}
-
 // in ppb units
-double tempcomp() {
+static double tempcomp(const struct tempcomp_data *data) {
   float temp_f = last_temp()*9.0/5.0+32.0;
-  return (TCXO_A + TCXO_B * (temp_f - TCXO_C) + TCXO_D * pow(temp_f - TCXO_C, 2)) * 1000.0;
+  return (data->tcxo_a + data->tcxo_b * (temp_f - data->tcxo_d) + data->tcxo_c * pow(temp_f - data->tcxo_d, 2)) * 1000.0;
 }
 
-int main() {
-  int fd;
-  struct timespec cycles[AVERAGING_CYCLES];
+static void poll_i2c(int fd) {
+  struct timespec offsets[AVERAGING_CYCLES];
   uint16_t first_cycle_index = 0, last_cycle_index = 0;
   uint32_t last_timestamp = 0;
   struct i2c_registers_type i2c_registers;
   struct i2c_registers_type_page2 i2c_registers_page2;
+  struct i2c_registers_type_page3 i2c_registers_page3;
+  struct tempcomp_data tempcomp_data;
 
-  memset(cycles, '\0', sizeof(cycles));
- 
-  fd = open_i2c(I2C_ADDR); 
+  memset(offsets, '\0', sizeof(offsets));
 
-  printf("ts delay status sleepms cycles1 cycles2 cycles3 #pts ch1 ch2 ch3 ch2.c ch3.c t.offset tempcomp 64s_ppm 128s_ppm output ");
+  get_i2c_page3(fd, &i2c_registers_page3, &tempcomp_data);
+
+  printf("ts delay status sleepms #pts 1# 1ppm 2# 2ppm 3# 3ppm 4# 4ppm t.offset tempcomp 32s_ppm 64s_ppm ");
   adc_header();
   printf("\n");
   while(1) {
     double added_offset_ns[INPUT_CHANNELS];
-    uint32_t sleep_ms, this_cycles[INPUT_CHANNELS];
-    uint8_t wrap[INPUT_CHANNELS] = {0,0,0};
-    uint32_t status_flags;
+    uint32_t sleep_ms;
+    uint32_t status_flags = 0;
     int16_t number_points;
     double tempcomp_now;
 
@@ -233,70 +199,51 @@ int main() {
     add_adc_data(&i2c_registers, &i2c_registers_page2);
 
     // was there no new data?
-    if(i2c_registers.milliseconds_irq_ch1 == last_timestamp) {
+    if(i2c_registers.milliseconds_irq_primary == last_timestamp) {
       printf("no new data\n");
       fflush(stdout);
-      first_cycle_index = last_cycle_index = 0; // reset because we missed a cycle
       usleep(995000);
       continue;
     }
-    last_timestamp = i2c_registers.milliseconds_irq_ch1;
+    last_timestamp = i2c_registers.milliseconds_irq_primary;
 
     // aim for 5ms after the event
-    sleep_ms = calculate_sleep_ms(i2c_registers.milliseconds_now, i2c_registers.milliseconds_irq_ch1);
+    sleep_ms = calculate_sleep_ms(i2c_registers.milliseconds_now, i2c_registers.milliseconds_irq_primary);
 
-    combine_tim1_tim3(this_cycles, &i2c_registers);
-
-    if(!add_cycles(this_cycles, wrap, added_offset_ns, (last_cycle_index != first_cycle_index), &i2c_registers)) {
+    if(!add_cycles(&status_flags, added_offset_ns, &i2c_registers)) {
       printf("first cycle, sleeping %d ms\n", sleep_ms);
       fflush(stdout);
       usleep(sleep_ms * 1000);
       continue;
     }
 
-    // estimate position of ch2/ch3 and modify sleep_ms if they're within 2ms of polling
-    adjust_sleep_ms(&sleep_ms, this_cycles);
-
-    status_flags = 0;
-
-    // consider channel 2 "absolute" and the other two as relative to it as long as chan2 is within 10ppm
-    if(added_offset_ns[1] > -10000 && added_offset_ns[1] < 10000) {
-      added_offset_ns[2] -= added_offset_ns[1];
-    } else {
-      status_flags |= STATUS_CH2_FAILED;
-      if(last_cycle_index != first_cycle_index) { // remove 1s from circle if there is one to remove
-        first_cycle_index = (first_cycle_index + 1) % AVERAGING_CYCLES;
+    tempcomp_now = tempcomp(&tempcomp_data);
+    for(uint8_t i = 0; i < INPUT_CHANNELS; i++) {
+      if(!(status_flags & BAD_CHANNEL_STATUS(i))) {
+        added_offset_ns[i] += tempcomp_now; // adjust all channels by the expected tempcomp
       }
     }
-
-    tempcomp_now = tempcomp();
-    added_offset_ns[0] -= tempcomp_now;
-    added_offset_ns[1] -= tempcomp_now;
-    add_offset_cycles(added_offset_ns[0], cycles, &first_cycle_index, &last_cycle_index);
+    store_added_offset(added_offset_ns[main_channel-1], offsets, &first_cycle_index, &last_cycle_index);
 
     number_points = wrap_sub(last_cycle_index, first_cycle_index, AVERAGING_CYCLES);
-    status_flags = status_flags | (wrap[0] & STATUS_CH1_WRAPS) | ((wrap[1] << 2) & STATUS_CH2_WRAPS) | ((wrap[3] << 4) & STATUS_CH3_WRAPS);
 
-    printf("%lu %2u %3x %4u %10u %10u %10u %2u ",
+    printf("%lu %2u %3o %4u %2u ",
        time(NULL),
-       i2c_registers.milliseconds_now - i2c_registers.milliseconds_irq_ch1,
+       i2c_registers.milliseconds_now - i2c_registers.milliseconds_irq_primary,
        status_flags,
        sleep_ms,
-       this_cycles[0], this_cycles[1], this_cycles[2],
        number_points
        );
-    if(status_flags&STATUS_CH2_FAILED) { // added_offset_ns values are wrong
-      printf("%3.0f %3.0f - ", added_offset_ns[0], added_offset_ns[1]);
-    } else {
-      printf("%3.0f %3.0f - ", added_offset_ns[0], added_offset_ns[1]);
+    for(uint8_t i = 0; i < INPUT_CHANNELS; i++) {
+//      printf("%10u %3u ", i2c_registers.tim2_at_cap[i], i2c_registers.ch_count[i]);
+      printf("%.3f ", added_offset_ns[i]/1000.0);
     }
-    printf("%3u %3u ", i2c_registers.ch2_count, i2c_registers.ch4_count);
-    print_timespec(&cycles[last_cycle_index]);
+    print_timespec(&offsets[last_cycle_index]);
 
-    printf(" %3.0f ",tempcomp_now);
+    printf(" %3.1f ",tempcomp_now);
 
-    show_ppm(number_points, last_cycle_index, 32, cycles);
-    float ppm = show_ppm(number_points, last_cycle_index, AVERAGING_CYCLES-1, cycles);
+    show_ppm(number_points, last_cycle_index, 32, offsets);
+    float ppm = show_ppm(number_points, last_cycle_index, AVERAGING_CYCLES-1, offsets);
     write_tcxo_ppm(ppm);
 
     adc_print();
@@ -305,4 +252,73 @@ int main() {
 
     usleep(sleep_ms * 1000);
   }
+}
+
+void help() {
+  fprintf(stderr,"input-capture-i2c -c [primary channel] -z [primary channel hz]\n");
+}
+
+int main(int argc, char **argv) {
+  int c;
+  uint8_t set_page[2];
+  uint8_t set_main_channel[3];
+  int fd;
+
+  while((c = getopt(argc, argv, "c:z:h")) != -1) {
+    switch(c) {
+      case 'c':
+        main_channel = atoi(optarg);
+        break;
+      case 'z':
+        main_channel_hz = atoi(optarg);
+        break;
+      case 'h':
+        help();
+        exit(0);
+        break;
+      case '?':
+        if(optopt == 'c' || optopt == 'z') {
+          fprintf(stderr, "Option -%c requires an argument.\n", optopt);
+	  exit(1);
+        }
+        if(isprint(optopt)) {
+          fprintf(stderr, "Unknown option -%c\n", optopt);
+          exit(1);
+        }
+        fprintf(stderr, "Unknown option character 0x%x.\n", optopt);
+        exit(1);
+        break;
+      default:
+        fprintf(stderr, "getopt is being wierd (0x%x), aborting\n", c);
+        exit(1);
+        break;
+    }
+  }
+
+  if(main_channel_hz > 255 || main_channel_hz < 1) {
+    printf("invalid value for HZ: %d\n", main_channel_hz);
+    exit(1);
+  }
+  if(main_channel > 4 || main_channel < 1) {
+    printf("invalid value for channel: %d\n", main_channel);
+    exit(1);
+  }
+
+  fd = open_i2c(I2C_ADDR); 
+
+  // primary channel setting is on page1
+  set_page[0] = I2C_REGISTER_OFFSET_PAGE;
+  set_page[1] = I2C_REGISTER_PAGE1;
+
+  // set the primary channel # and HZ
+  set_main_channel[0] = I2C_REGISTER_PRIMARY_CHANNEL;
+  set_main_channel[1] = main_channel-1; // channel 1 = 0
+  set_main_channel[2] = main_channel_hz;
+
+  lock_i2c(fd);
+  write_i2c(fd, set_page, sizeof(set_page));
+  write_i2c(fd, set_main_channel, sizeof(set_main_channel));
+  unlock_i2c(fd);
+
+  poll_i2c(fd);
 }
