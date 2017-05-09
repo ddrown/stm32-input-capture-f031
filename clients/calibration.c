@@ -21,8 +21,6 @@ int main() {
   struct i2c_registers_type_page4 i2c_registers_page4;
   struct timeval local;
 
-  setup_rtc_tz();
-
   fd = open_i2c(I2C_ADDR); 
 
   printf("time rtc lse/2 lse/14 ch1 ch1# ch2 ch2# ch3 ch3# ch4 ch4# ");

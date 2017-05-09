@@ -241,8 +241,6 @@ static void setcalibration(int fd, uint32_t addclk, uint32_t subclk) {
 int main(int argc, char **argv) {
   int fd;
 
-  setup_rtc_tz();
-
   if(argc > 1 && strcmp(argv[1], "boot") == 0) {
     for(uint8_t i = 0; i < 40; i++) {
       if(access("/dev/i2c-1", F_OK) == 0) {

@@ -6,11 +6,6 @@
 #include "i2c_registers.h"
 #include "rtc_data.h"
 
-void setup_rtc_tz() {
-  setenv("TZ","GMT",1); // RTC is in GMT
-  tzset();
-}
-
 double rtc_to_double(struct i2c_registers_type_page4 *page4, struct tm *now) {
   time_t now_t;
   struct tm now2;
