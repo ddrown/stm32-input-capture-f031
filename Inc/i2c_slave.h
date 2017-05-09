@@ -63,16 +63,16 @@ extern struct i2c_registers_type_page3 {
    * byte 3: mantissa bits 16-8
    * byte 4: mantissa bits 7-0
    * they describe the expected frequency error in ppm:
-   * ppm = tcxo_a + tcxo_b * (F - tcxo_c) + tcxo_d * pow(F - tcxo_c, 2)
+   * ppm = tcxo_a + tcxo_b * (F - tcxo_d) + tcxo_c * pow(F - tcxo_d, 2)
    * where F is the temperature from the internal_temp sensor in Fahrenheit
    */
-  uint32_t tcxo_a;
-  uint32_t tcxo_b;
-  uint32_t tcxo_c;
-  uint32_t tcxo_d;
+  uint32_t tcxo_a; // float type
+  uint32_t tcxo_b; // float type
+  uint32_t tcxo_c; // float type
+  uint32_t tcxo_d; // float type
   uint8_t max_calibration_temp; // F
   int8_t min_calibration_temp;  // F
-  uint8_t rmse_fit;             // ppb
+  uint8_t rmse_fit;             // for tcxo, in ppb
   uint8_t save;                 // 1=save new values to flash
   uint8_t save_status;          // see SAVE_STATUS_X
 
