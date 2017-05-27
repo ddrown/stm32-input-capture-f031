@@ -12,9 +12,30 @@
 #include "timespec.h"
 #include "i2c_registers.h"
 #include "adc_calc.h"
+#include "vref_calc.h"
+
+#define SUMMARIZE_INTERVAL 64
+struct per_second_stats {
+  time_t when;
+  uint32_t irq_to_i2c_ms;
+  uint32_t status;
+  uint32_t sleep_ms;
+  double added_offset_ns[INPUT_CHANNELS];
+  double tempcomp;
+  double main_freq_32s;
+  double main_freq_64s;
+  float temp_f;
+  float vref;
+  float vbat;
+} stats[SUMMARIZE_INTERVAL];
+uint8_t stats_i = 0;
 
 // current code assumptions: main channel never stops
-static int main_channel = 1, main_channel_hz = 50;
+struct icap_config {
+  uint8_t verbose;
+  uint8_t main_channel;
+  uint8_t main_channel_hz;
+} config;
 
 #define AVERAGING_CYCLES 65
 #define PPM_INVALID -1000000.0
@@ -28,7 +49,19 @@ static int main_channel = 1, main_channel_hz = 50;
 #define STATUS_BAD_CH3      0b100
 #define STATUS_BAD_CH4     0b1000
 // BAD_CHANNEL_STATUS takes 0-indexed channels
-#define BAD_CHANNEL_STATUS(x) (1 << x)
+#define BAD_CHANNEL_STATUS(x) (1 << (x))
+
+static uint16_t wrap_add(int16_t a, int16_t b, uint16_t modulus) {
+  a = a + b;
+  if(a < 0) {
+    a += modulus;
+  }
+  return a;
+}
+
+static uint16_t wrap_sub(int16_t a, int16_t b, uint16_t modulus) {
+  return wrap_add(a, -1 * b, modulus);
+}
 
 static void print_ppm(float ppm) {
   if(ppm < 500 && ppm > -500) {
@@ -77,7 +110,7 @@ static void store_added_offset(double added_offset_ns, struct timespec *cycles, 
   *last_cycle = this_cycle_i;
 }
 
-static float calc_ppm(struct timespec *end, struct timespec *start, uint16_t seconds) {
+static float calc_ppm_2(struct timespec *end, struct timespec *start, uint16_t seconds) {
   double diff_s;
   struct timespec diff;
   diff.tv_sec = end->tv_sec;
@@ -90,27 +123,12 @@ static float calc_ppm(struct timespec *end, struct timespec *start, uint16_t sec
   return ppm;
 }
 
-static uint16_t wrap_add(int16_t a, int16_t b, uint16_t modulus) {
-  a = a + b;
-  if(a < 0) {
-    a += modulus;
-  }
-  return a;
-}
-
-static uint16_t wrap_sub(int16_t a, int16_t b, uint16_t modulus) {
-  return wrap_add(a, -1 * b, modulus);
-}
-
-static float show_ppm(int16_t number_points, uint16_t last_cycle_index, uint16_t seconds, struct timespec *cycles) {
+static float calc_ppm(int16_t number_points, uint16_t last_cycle_index, uint16_t seconds, struct timespec *cycles) {
   float ppm = PPM_INVALID; // default: invalid PPM
 
   if(number_points >= seconds) {
     uint16_t start_index = wrap_sub(last_cycle_index, seconds, AVERAGING_CYCLES);
-    ppm = calc_ppm(&cycles[last_cycle_index], &cycles[start_index], seconds);
-    print_ppm(ppm);
-  } else {
-    printf("- ");
+    ppm = calc_ppm_2(&cycles[last_cycle_index], &cycles[start_index], seconds);
   }
 
   return ppm;
@@ -136,7 +154,7 @@ static int add_cycles(uint32_t *status_flags, double *added_offset_ns, const str
   for(uint8_t i = 0; i < INPUT_CHANNELS; i++) {
     int32_t diff;
     
-    if(i == main_channel-1) {
+    if(i == config.main_channel-1) {
       uint32_t milliseconds = i2c_registers->milliseconds_irq_primary - primary_ms_last;
       if(milliseconds < 2000 && milliseconds > 900) {
         diff = i2c_registers->tim2_at_cap[i] - previous_cycles[i] - EXPECTED_FREQ;
@@ -172,6 +190,154 @@ static double tempcomp(const struct tempcomp_data *data) {
   return (data->tcxo_a + data->tcxo_b * (temp_f - data->tcxo_d) + data->tcxo_c * pow(temp_f - data->tcxo_d, 2)) * 1000.0;
 }
 
+static void before_loop() {
+  if(config.verbose) {
+    printf("ts delay status sleepms 1ppm 2ppm 3ppm 4ppm tempcomp 32s_ppm 64s_ppm ");
+    printf("int-temp vref vbat");
+    printf("\n");
+  }
+}
+
+static void log_loop(struct per_second_stats *cur_stats) {
+  if(config.verbose) {
+    printf("%lu %2u %3o %4u ",
+       cur_stats->when,
+       cur_stats->irq_to_i2c_ms,
+       cur_stats->status,
+       cur_stats->sleep_ms
+       );
+    for(uint8_t i = 0; i < INPUT_CHANNELS; i++) {
+      printf("%.3f ", cur_stats->added_offset_ns[i]/1000.0);
+    }
+
+    printf(" %3.1f ",cur_stats->tempcomp);
+
+    print_ppm(cur_stats->main_freq_32s);
+    print_ppm(cur_stats->main_freq_64s);
+
+    printf("%.4f ", cur_stats->temp_f);
+    printf("%.5f ", cur_stats->vref);
+    printf("%.5f ", cur_stats->vbat);
+    printf("\n");
+    fflush(stdout);
+  }
+}
+
+static void print_data_u32(uint32_t *data, uint32_t count) {
+  uint32_t min, max, sum;
+  if(count == 0) {
+    printf("- ");
+    return;
+  }
+  min = data[0];
+  max = data[0];
+  sum = 0;
+  for(uint32_t i = 0; i < count; i++) {
+    if(min > data[i])
+      min = data[i];
+    if(max < data[i])
+      max = data[i];
+    sum += data[i];
+  }
+  printf("%u/%.1f/%u ", min, sum/(float)count, max);
+}
+
+static void print_data_d(double *data, uint32_t count, int precision) {
+  double min, max, sum;
+  if(count == 0) {
+    printf("- ");
+    return;
+  }
+  min = data[0];
+  max = data[0];
+  sum = 0;
+  for(uint32_t i = 0; i < count; i++) {
+    if(min > data[i])
+      min = data[i];
+    if(max < data[i])
+      max = data[i];
+    sum += data[i];
+  }
+  printf("%.*f/%.*f/%.*f ", precision, min, precision, sum/count, precision, max);
+}
+
+static void summarize() {
+  uint32_t stat_data[SUMMARIZE_INTERVAL];
+  double stat_data_d[SUMMARIZE_INTERVAL];
+  uint32_t count;
+
+  printf("%lu %lu ", stats[0].when, stats[SUMMARIZE_INTERVAL-1].when);
+  for(uint32_t i = 0; i < SUMMARIZE_INTERVAL; i++) {
+    stat_data[i] = stats[i].irq_to_i2c_ms;
+  }
+  print_data_u32(stat_data, SUMMARIZE_INTERVAL);
+
+  for(uint32_t i = 0; i < SUMMARIZE_INTERVAL; i++) {
+    stat_data[i] = stats[i].sleep_ms;
+  }
+  print_data_u32(stat_data, SUMMARIZE_INTERVAL);
+
+  for(uint32_t chan = 0; chan < INPUT_CHANNELS; chan++) {
+    count = 0;
+    for(uint32_t i = 0; i < SUMMARIZE_INTERVAL; i++) {
+      if(!(stats[i].status & BAD_CHANNEL_STATUS(chan))) {
+        stat_data_d[count] = stats[i].added_offset_ns[chan]/1000.0;
+        count++;
+      }
+    }
+    print_data_d(stat_data_d, count, 3);
+  }
+
+  for(uint32_t i = 0; i < SUMMARIZE_INTERVAL; i++) {
+    stat_data_d[i] = stats[i].tempcomp / 1000.0;
+  }
+  print_data_d(stat_data_d, SUMMARIZE_INTERVAL, 3);
+
+  count = 0;
+  for(uint32_t i = 0; i < SUMMARIZE_INTERVAL; i++) {
+    if(stats[i].main_freq_32s < 500 && stats[i].main_freq_32s > -500) {
+      stat_data_d[count] = stats[i].main_freq_32s;
+      count++;
+    }
+  }
+  print_data_d(stat_data_d, count, 3);
+
+  count = 0;
+  for(uint32_t i = 0; i < SUMMARIZE_INTERVAL; i++) {
+    if(stats[i].main_freq_64s < 500 && stats[i].main_freq_64s > -500) {
+      stat_data_d[count] = stats[i].main_freq_64s;
+      count++;
+    }
+  }
+  print_data_d(stat_data_d, count, 3);
+
+  for(uint32_t i = 0; i < SUMMARIZE_INTERVAL; i++) {
+    stat_data_d[i] = stats[i].temp_f;
+  }
+  print_data_d(stat_data_d, SUMMARIZE_INTERVAL, 4);
+
+  for(uint32_t i = 0; i < SUMMARIZE_INTERVAL; i++) {
+    stat_data_d[i] = stats[i].vref;
+  }
+  print_data_d(stat_data_d, SUMMARIZE_INTERVAL, 5);
+
+  for(uint32_t i = 0; i < SUMMARIZE_INTERVAL; i++) {
+    stat_data_d[i] = stats[i].vbat;
+  }
+  print_data_d(stat_data_d, SUMMARIZE_INTERVAL, 5);
+
+  printf("\n");
+  fflush(stdout);
+}
+
+static void increment_stats_i() {
+  stats_i++;
+  if(stats_i >= SUMMARIZE_INTERVAL) {
+    summarize();
+    stats_i = 0;
+  }
+}
+
 static void poll_i2c(int fd) {
   struct timespec offsets[AVERAGING_CYCLES];
   uint16_t first_cycle_index = 0, last_cycle_index = 0;
@@ -185,72 +351,62 @@ static void poll_i2c(int fd) {
 
   get_i2c_page3(fd, &i2c_registers_page3, &tempcomp_data);
 
-  printf("ts delay status sleepms #pts 1# 1ppm 2# 2ppm 3# 3ppm 4# 4ppm t.offset tempcomp 32s_ppm 64s_ppm ");
-  adc_header();
-  printf("\n");
+  before_loop();
   while(1) {
-    double added_offset_ns[INPUT_CHANNELS];
-    uint32_t sleep_ms;
-    uint32_t status_flags = 0;
     int16_t number_points;
-    double tempcomp_now;
+    struct per_second_stats *cur_stats;
+
+    cur_stats = &stats[stats_i];
+    memset(cur_stats, '\0', sizeof(struct per_second_stats));
+    cur_stats->when = time(NULL);
 
     get_i2c_structs(fd, &i2c_registers, &i2c_registers_page2);
     add_adc_data(&i2c_registers, &i2c_registers_page2);
 
+    cur_stats->temp_f = last_temp()*9/5.0+32.0;
+    cur_stats->vref = last_vref();
+    cur_stats->vbat = last_vbat();
+
     // was there no new data?
     if(i2c_registers.milliseconds_irq_primary == last_timestamp) {
+      cur_stats->status |= BAD_CHANNEL_STATUS(config.main_channel-1);
       printf("no new data\n");
       fflush(stdout);
       usleep(995000);
+      increment_stats_i();
       continue;
     }
+    cur_stats->irq_to_i2c_ms = i2c_registers.milliseconds_now - i2c_registers.milliseconds_irq_primary;
     last_timestamp = i2c_registers.milliseconds_irq_primary;
 
     // aim for 5ms after the event
-    sleep_ms = calculate_sleep_ms(i2c_registers.milliseconds_now, i2c_registers.milliseconds_irq_primary);
+    cur_stats->sleep_ms = calculate_sleep_ms(i2c_registers.milliseconds_now, i2c_registers.milliseconds_irq_primary);
 
-    if(!add_cycles(&status_flags, added_offset_ns, &i2c_registers)) {
-      printf("first cycle, sleeping %d ms\n", sleep_ms);
+    if(!add_cycles(&cur_stats->status, cur_stats->added_offset_ns, &i2c_registers)) {
+      printf("first cycle, sleeping %d ms\n", cur_stats->sleep_ms);
       fflush(stdout);
-      usleep(sleep_ms * 1000);
+      usleep(cur_stats->sleep_ms * 1000);
+      increment_stats_i();
       continue;
     }
 
-    tempcomp_now = tempcomp(&tempcomp_data);
+    cur_stats->tempcomp = tempcomp(&tempcomp_data);
     for(uint8_t i = 0; i < INPUT_CHANNELS; i++) {
-      if(!(status_flags & BAD_CHANNEL_STATUS(i))) {
-        added_offset_ns[i] += tempcomp_now; // adjust all channels by the expected tempcomp
+      if(!(cur_stats->status & BAD_CHANNEL_STATUS(i))) {
+        cur_stats->added_offset_ns[i] += cur_stats->tempcomp; // adjust all channels by the expected tempcomp
       }
     }
-    store_added_offset(added_offset_ns[main_channel-1], offsets, &first_cycle_index, &last_cycle_index);
+    store_added_offset(cur_stats->added_offset_ns[config.main_channel-1], offsets, &first_cycle_index, &last_cycle_index);
 
     number_points = wrap_sub(last_cycle_index, first_cycle_index, AVERAGING_CYCLES);
 
-    printf("%lu %2u %3o %4u %2u ",
-       time(NULL),
-       i2c_registers.milliseconds_now - i2c_registers.milliseconds_irq_primary,
-       status_flags,
-       sleep_ms,
-       number_points
-       );
-    for(uint8_t i = 0; i < INPUT_CHANNELS; i++) {
-//      printf("%10u %3u ", i2c_registers.tim2_at_cap[i], i2c_registers.ch_count[i]);
-      printf("%.3f ", added_offset_ns[i]/1000.0);
-    }
-    print_timespec(&offsets[last_cycle_index]);
+    cur_stats->main_freq_32s = calc_ppm(number_points, last_cycle_index, 32, offsets);
+    cur_stats->main_freq_64s = calc_ppm(number_points, last_cycle_index, AVERAGING_CYCLES-1, offsets);
+    write_tcxo_ppm(cur_stats->main_freq_64s);
+    log_loop(cur_stats);
 
-    printf(" %3.1f ",tempcomp_now);
-
-    show_ppm(number_points, last_cycle_index, 32, offsets);
-    float ppm = show_ppm(number_points, last_cycle_index, AVERAGING_CYCLES-1, offsets);
-    write_tcxo_ppm(ppm);
-
-    adc_print();
-    printf("\n");
-    fflush(stdout);
-
-    usleep(sleep_ms * 1000);
+    increment_stats_i();
+    usleep(cur_stats->sleep_ms * 1000);
   }
 }
 
@@ -264,17 +420,25 @@ int main(int argc, char **argv) {
   uint8_t set_main_channel[3];
   int fd;
 
-  while((c = getopt(argc, argv, "c:z:h")) != -1) {
+  // defaults
+  config.verbose = 0;
+  config.main_channel = 1;
+  config.main_channel_hz = 50;
+
+  while((c = getopt(argc, argv, "c:z:hv")) != -1) {
     switch(c) {
       case 'c':
-        main_channel = atoi(optarg);
+        config.main_channel = atoi(optarg);
         break;
       case 'z':
-        main_channel_hz = atoi(optarg);
+        config.main_channel_hz = atoi(optarg);
         break;
       case 'h':
         help();
         exit(0);
+        break;
+      case 'v':
+        config.verbose = 1;
         break;
       case '?':
         if(optopt == 'c' || optopt == 'z') {
@@ -295,12 +459,12 @@ int main(int argc, char **argv) {
     }
   }
 
-  if(main_channel_hz > 255 || main_channel_hz < 1) {
-    printf("invalid value for HZ: %d\n", main_channel_hz);
+  if(config.main_channel_hz > 255 || config.main_channel_hz < 1) {
+    printf("invalid value for HZ: %d\n", config.main_channel_hz);
     exit(1);
   }
-  if(main_channel > 4 || main_channel < 1) {
-    printf("invalid value for channel: %d\n", main_channel);
+  if(config.main_channel > 4 || config.main_channel < 1) {
+    printf("invalid value for channel: %d\n", config.main_channel);
     exit(1);
   }
 
@@ -312,8 +476,8 @@ int main(int argc, char **argv) {
 
   // set the primary channel # and HZ
   set_main_channel[0] = I2C_REGISTER_PRIMARY_CHANNEL;
-  set_main_channel[1] = main_channel-1; // channel 1 = 0
-  set_main_channel[2] = main_channel_hz;
+  set_main_channel[1] = config.main_channel-1; // channel 1 = 0
+  set_main_channel[2] = config.main_channel_hz;
 
   lock_i2c(fd);
   write_i2c(fd, set_page, sizeof(set_page));
