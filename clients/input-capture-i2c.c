@@ -42,6 +42,8 @@ struct icap_config {
 #define AIM_AFTER_MS 5
 #define TCXO_TEMPCOMP_TEMPFILE "/run/.tcxo"
 #define TCXO_TEMPCOMP_FILE "/run/tcxo"
+#define TCXO_FREQ_TEMPFILE "/run/.tcxo-freq"
+#define TCXO_FREQ_FILE "/run/tcxo-freq"
 
 // status_flags bitfields
 #define STATUS_BAD_CH1        0b1
@@ -71,21 +73,30 @@ static void print_ppm(float ppm) {
   }
 }
 
-static void write_tcxo_ppm(float ppm) {
+static void write_freqfile(float ppm, const char *tempfile, const char *finalfile) {
   FILE *tcxo;
 
   if(ppm > 500 || ppm < -500) {
     return;
   }
 
-  tcxo = fopen(TCXO_TEMPCOMP_TEMPFILE,"w");
+  tcxo = fopen(tempfile,"w");
   if(tcxo == NULL) {
-    perror("fopen " TCXO_TEMPCOMP_TEMPFILE);
+    perror("fopen");
+    printf("was trying to open file %s\n", tempfile);
     exit(1);
   }
   fprintf(tcxo, "%1.3f\n", ppm);
   fclose(tcxo);
-  rename(TCXO_TEMPCOMP_TEMPFILE, TCXO_TEMPCOMP_FILE);
+  rename(tempfile, finalfile);
+}
+
+static void write_tcxo_ppm(float ppm) {
+  write_freqfile(ppm, TCXO_FREQ_TEMPFILE, TCXO_FREQ_FILE);
+}
+
+static void write_tempcomp_ppm(float ppm) {
+  write_freqfile(ppm, TCXO_TEMPCOMP_TEMPFILE, TCXO_TEMPCOMP_FILE);
 }
 
 // modifies cycles, first_cycle, last_cycle
@@ -402,7 +413,8 @@ static void poll_i2c(int fd) {
 
     cur_stats->main_freq_32s = calc_ppm(number_points, last_cycle_index, 32, offsets);
     cur_stats->main_freq_64s = calc_ppm(number_points, last_cycle_index, AVERAGING_CYCLES-1, offsets);
-    write_tcxo_ppm(cur_stats->main_freq_64s);
+    write_tempcomp_ppm(cur_stats->main_freq_64s);
+    write_tcxo_ppm(cur_stats->tempcomp / 1000.0);
     log_loop(cur_stats);
 
     increment_stats_i();

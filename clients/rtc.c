@@ -15,6 +15,20 @@ float lse_calibration_to_ppm(uint16_t calib) {
   return (calib & CALIBRATION_ADDCLK) ? 488.281 : 0.0 - 0.953674 * (calib & CALIBRATION_SUBCLK_MASK);
 }
 
+uint16_t ppm_to_lse_calibration(float ppm) {
+  uint16_t calib = 0;
+  uint16_t subclock;
+
+  if(ppm > 0) {
+    calib = calib | CALIBRATION_ADDCLK;
+    ppm -= 488.281;
+  }
+
+  subclock = ppm / -0.953674;
+
+  return calib | (subclock & CALIBRATION_SUBCLK_MASK);
+}
+
 static int compare_d(const void *a_p, const void *b_p) {
   double *a = (double *)a_p;
   double *b = (double *)b_p;
@@ -213,18 +227,15 @@ static void set_system(int fd) {
   printf("median %.6f\n", median);
 }
 
-static void setcalibration(int fd, uint32_t addclk, uint32_t subclk) {
-  struct i2c_registers_type_page4 page4;
+static void _setcalibration(int fd, uint16_t calib) {
   uint8_t set_page[2];
   uint8_t set_page4_calib[3], set_page4_apply[2];
-
-  page4.lse_calibration = (addclk ? CALIBRATION_ADDCLK : 0) | (subclk & CALIBRATION_SUBCLK_MASK);
 
   set_page[0] = I2C_REGISTER_OFFSET_PAGE;
   set_page[1] = I2C_REGISTER_PAGE4;
 
   set_page4_calib[0] = 8;
-  memcpy(set_page4_calib+1, &page4.lse_calibration, sizeof(page4.lse_calibration));
+  memcpy(set_page4_calib+1, &calib, sizeof(calib));
 
   set_page4_apply[0] = 11;
   set_page4_apply[1] = SET_RTC_CALIBRATION;
@@ -234,13 +245,93 @@ static void setcalibration(int fd, uint32_t addclk, uint32_t subclk) {
   write_i2c(fd, set_page4_calib, sizeof(set_page4_calib));
   write_i2c(fd, set_page4_apply, sizeof(set_page4_apply));
   unlock_i2c(fd);
+}
+
+static void setcalibration(int fd, uint32_t addclk, uint32_t subclk) {
+  struct i2c_registers_type_page4 page4;
+
+  page4.lse_calibration = (addclk ? CALIBRATION_ADDCLK : 0) | (subclk & CALIBRATION_SUBCLK_MASK);
+
+  _setcalibration(fd, page4.lse_calibration);
 
   printf("set to %u (%.3f ppm)\n", page4.lse_calibration, lse_calibration_to_ppm(page4.lse_calibration));
+}
+
+float read_tcxo_ppm() {
+  FILE *f;
+  float ppm;
+
+  f = fopen("/run/tcxo-freq","r");
+  if(f == NULL) {
+    perror("fopen /run/tcxo-freq");
+    exit(1);
+  }
+  fscanf(f, "%f", &ppm);
+  fclose(f);
+
+  return ppm;
+}
+
+void compare(int fd) {
+  struct timeval rtc;
+  struct i2c_registers_type_page4 page4, last_page4;
+  float ppm_remainder = 0.0;
+
+  memset(&last_page4, '\0', sizeof(last_page4));
+
+  printf("LSE vs TCXO\n");
+  printf("time offset ms tim2 tim14 tim2_vs_tim14 ppm tcxo\n");
+  while(1) {
+    double local_ts, rtc_ts, diff;
+
+    get_rtc(fd, &rtc, &page4);
+
+    rtc_ts = rtc_to_double(&page4,NULL);
+    local_ts = rtc.tv_sec + rtc.tv_usec / 1000000.0;
+    diff = local_ts-rtc_ts; // positive: rtc slow, negative: rtc fast
+
+    // if last_page4 is set
+    if(last_page4.LSE_millis_irq != 0 || last_page4.LSE_tim2_irq != 0) {
+      uint32_t milli_diff, tim2_diff, s;
+      uint16_t tim14_diff, expected_tim14_diff, calib;
+      int32_t tim2_adjustment;
+      float ppm, tcxo_ppm;
+
+      milli_diff = page4.LSE_millis_irq - last_page4.LSE_millis_irq;
+      tim2_diff = page4.LSE_tim2_irq - last_page4.LSE_tim2_irq;
+      tim14_diff = page4.LSE_tim14_cap - last_page4.LSE_tim14_cap;
+      expected_tim14_diff = (uint16_t)tim2_diff + last_page4.LSE_tim14_cap;
+      tim2_adjustment = (int32_t)page4.LSE_tim14_cap - (int32_t)expected_tim14_diff;
+
+      s = ((milli_diff+500) / 1000); // round up at 0.5s
+      ppm = (tim2_diff + tim2_adjustment)/s;
+      ppm = (ppm - EXPECTED_FREQ) / (float)(EXPECTED_FREQ / 1000000.0);
+      tcxo_ppm = read_tcxo_ppm();
+      ppm += tcxo_ppm;
+      calib = ppm_to_lse_calibration(ppm + ppm_remainder);
+      ppm_remainder += ppm - lse_calibration_to_ppm(calib);
+
+      // if we actually have timestamp data
+      if(milli_diff != 0) { 
+        printf("%lu %.3f %u %u %u %d %.3f %.3f %.3f %.3f\n", time(NULL), diff, milli_diff, tim2_diff, tim14_diff, tim2_adjustment, ppm, tcxo_ppm, lse_calibration_to_ppm(calib), ppm_remainder);
+        _setcalibration(fd, calib);
+
+        memcpy(&last_page4, &page4, sizeof(page4));
+      } else {
+        printf("%lu %.3f %u %u %u %d - %.3f - - no data\n", time(NULL), diff, milli_diff, tim2_diff, tim14_diff, tim2_adjustment, tcxo_ppm);
+      }
+    } else {
+      printf("%lu %.3f - - - - - -\n", time(NULL), diff);
+      memcpy(&last_page4, &page4, sizeof(page4));
+    }
+    sleep(30);
+  }
 }
 
 int main(int argc, char **argv) {
   int fd;
 
+  // boot modifier: wait for the i2c bus to show up
   if(argc > 1 && strcmp(argv[1], "boot") == 0) {
     for(uint8_t i = 0; i < 40; i++) {
       if(access("/dev/i2c-1", F_OK) == 0) {
@@ -258,7 +349,7 @@ int main(int argc, char **argv) {
   fd = open_i2c(I2C_ADDR); 
 
   if(argc == 1) {
-    printf("commands: get, set, setsystem, setsubsecond, setcalibration, sync\n");
+    printf("commands: get, set, setsystem, setsubsecond, setcalibration, sync, compare\n");
     exit(1);
   }
 
@@ -297,6 +388,11 @@ int main(int argc, char **argv) {
 
   if(strcmp(argv[1], "setsystem") == 0) {
     set_system(fd);
+    return 0;
+  }
+
+  if(strcmp(argv[1], "compare") == 0) {
+    compare(fd);
     return 0;
   }
 
