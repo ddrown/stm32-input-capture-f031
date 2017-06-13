@@ -1,0 +1,15 @@
+[Unit]
+Description=Save /var/run/tcxo
+DefaultDependencies=no
+Before=basic.target shutdown.target
+After=systemd-modules-load.service systemd-udevd.service pihatrtc.service
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/save-tcxo restore
+ExecStop=/usr/local/sbin/save-tcxo save
+
+[Install]
+WantedBy=sysinit.target

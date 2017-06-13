@@ -2,7 +2,7 @@
 Description=Synchronise Pi Hat Hardware Clock and System Clock
 DefaultDependencies=no
 Before=basic.target shutdown.target
-After=systemd-modules-load.service udev-finish.service
+After=systemd-modules-load.service systemd-udevd.service
 Conflicts=shutdown.target
 
 [Service]

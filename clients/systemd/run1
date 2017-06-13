@@ -1,0 +1,6 @@
+#!/bin/sh
+
+./odroid-c2-setup
+
+#./set-calibration-data set-primary 2 50
+./input-capture-i2c -c 2 -z 50 >>/home/abob/input-capture-i2c-f031/clients/input-capture-i2c.log

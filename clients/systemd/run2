@@ -1,0 +1,6 @@
+#!/bin/sh
+
+(
+  ./rtc sync
+  ./rtc compare
+) >>/home/abob/input-capture-i2c-f031/clients/rtc.log

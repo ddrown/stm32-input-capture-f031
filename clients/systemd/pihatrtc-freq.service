@@ -1,0 +1,11 @@
+[Unit]
+Description=keep RTC on frequency
+
+[Service]
+WorkingDirectory=/home/abob/input-capture-i2c-f031/clients
+ExecStart=/home/abob/input-capture-i2c-f031/clients/run2
+KillMode=control-group
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

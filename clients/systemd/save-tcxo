@@ -1,0 +1,9 @@
+#!/bin/sh
+
+if [ "$1" = save ]; then
+  echo saving the value `cat /var/run/tcxo`
+  cp /var/run/tcxo /var/lib/ntp/tcxo
+elif [ "$1" = restore ]; then
+  echo restoring the value `cat /var/lib/ntp/tcxo`
+  cp /var/lib/ntp/tcxo /var/run/tcxo
+fi
