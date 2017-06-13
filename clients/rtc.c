@@ -324,6 +324,7 @@ void compare(int fd) {
       printf("%lu %.3f - - - - - -\n", time(NULL), diff);
       memcpy(&last_page4, &page4, sizeof(page4));
     }
+    fflush(stdout);
     sleep(30);
   }
 }
