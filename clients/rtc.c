@@ -300,11 +300,19 @@ void compare(int fd) {
       milli_diff = page4.LSE_millis_irq - last_page4.LSE_millis_irq;
       tim2_diff = page4.LSE_tim2_irq - last_page4.LSE_tim2_irq;
       tim14_diff = page4.LSE_tim14_cap - last_page4.LSE_tim14_cap;
+
+      // calculate what tim2 would have been if it was at capture time instead of irq time
+      // (would be wrong for absolute offset, but it is correct for frequency measurement)
       expected_tim14_diff = (uint16_t)tim2_diff + last_page4.LSE_tim14_cap;
       tim2_adjustment = (int32_t)page4.LSE_tim14_cap - (int32_t)expected_tim14_diff;
+      if(tim2_adjustment > 32767) {
+        tim2_adjustment = tim2_adjustment - 65536; // assume adjustment range is +32767 .. -32768
+      } else if(tim2_adjustment < -32768) {
+        tim2_adjustment = tim2_adjustment + 65536; // assume adjustment range is +32767 .. -32768
+      }
 
       s = ((milli_diff+500) / 1000); // round up at 0.5s
-      ppm = (tim2_diff + tim2_adjustment)/s;
+      ppm = (tim2_diff + tim2_adjustment)/(float)s;
       ppm = (ppm - EXPECTED_FREQ) / (float)(EXPECTED_FREQ / 1000000.0);
       tcxo_ppm = read_tcxo_ppm();
       ppm += tcxo_ppm;
