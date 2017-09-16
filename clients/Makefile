@@ -7,6 +7,9 @@ all: set-calibration-data pi-pwm-setup ds3231 pcf2129 rtc calibration input-capt
 input-capture-i2c: input-capture-i2c.o i2c.o timespec.o i2c_registers.o adc_calc.o vref_calc.o avg.o float.o
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
+frequency: frequency.o i2c.o i2c_registers.o float.o
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
 timestamps-i2c: timestamps-i2c.o i2c.o i2c_registers.o timespec.o
 	$(CC) $(CFLAGS) -o $@ $^
 
@@ -18,6 +21,9 @@ set-calibration-data: set-calibration-data.o i2c.o i2c_registers.o float.o
 
 rtc: rtc.o i2c.o i2c_registers.o rtc_data.o float.o
 	$(CC) $(CFLAGS) -o $@ $^
+
+pi-pwm-disable: pi-pwm-disable.o
+	$(CC) $(CFLAGS) -o $@ $^ -lwiringPi -pthread
 
 pi-pwm-setup: pi-pwm-setup.o
 	$(CC) $(CFLAGS) -o $@ $^ -lwiringPi -pthread
