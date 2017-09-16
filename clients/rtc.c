@@ -257,17 +257,21 @@ static void setcalibration(int fd, uint32_t addclk, uint32_t subclk) {
   printf("set to %u (%.3f ppm)\n", page4.lse_calibration, lse_calibration_to_ppm(page4.lse_calibration));
 }
 
-float read_tcxo_aging() {
+float aging_b = 0;
+uint32_t aging_d = 0;
+void read_tcxo_aging() {
   FILE *f;
-  float ppm;
 
-  f = fopen("/run/tcxo-aging","r");
+  f = fopen("tcxo-aging","r");
   if(f == NULL) {
-    return 0;
+    return;
   }
-  fscanf(f, "%f", &ppm);
+  fscanf(f, "%f\n%u", &aging_b, &aging_d);
   fclose(f);
+}
 
+float calc_tcxo_aging() {
+  float ppm = (time(NULL)-aging_d) * aging_b;
   return ppm;
 }
 
@@ -293,8 +297,10 @@ void compare(int fd) {
 
   memset(&last_page4, '\0', sizeof(last_page4));
 
+  read_tcxo_aging();
+
   printf("LSE vs TCXO\n");
-  printf("time offset ms tim2 tim14 tim2_vs_tim14 ppm tcxo lse_set lse_remainder\n");
+  printf("time offset ms tim2 tim14 tim2_vs_tim14 ppm tcxo lse_set lse_remainder aging\n");
   while(1) {
     double local_ts, rtc_ts, diff;
 
@@ -328,22 +334,22 @@ void compare(int fd) {
       s = ((milli_diff+500) / 1000); // round up at 0.5s
       ppm = (tim2_diff + tim2_adjustment)/(float)s;
       ppm = (ppm - EXPECTED_FREQ) / (float)(EXPECTED_FREQ / 1000000.0);
-      tcxo_ppm = read_tcxo_ppm() + read_tcxo_aging();
+      tcxo_ppm = read_tcxo_ppm() + calc_tcxo_aging();
       ppm += tcxo_ppm;
       calib = ppm_to_lse_calibration(ppm + ppm_remainder);
       ppm_remainder += ppm - lse_calibration_to_ppm(calib);
 
       // if we actually have timestamp data
       if(milli_diff != 0) { 
-        printf("%lu %.3f %u %u %u %d %.3f %.3f %.3f %.3f\n", time(NULL), diff, milli_diff, tim2_diff, tim14_diff, tim2_adjustment, ppm, tcxo_ppm, lse_calibration_to_ppm(calib), ppm_remainder);
+        printf("%lu %.3f %u %u %u %d %.3f %.3f %.3f %.3f %.3f\n", time(NULL), diff, milli_diff, tim2_diff, tim14_diff, tim2_adjustment, ppm, tcxo_ppm, lse_calibration_to_ppm(calib), ppm_remainder, calc_tcxo_aging());
         _setcalibration(fd, calib);
 
         memcpy(&last_page4, &page4, sizeof(page4));
       } else {
-        printf("%lu %.3f %u %u %u %d - %.3f - - no data\n", time(NULL), diff, milli_diff, tim2_diff, tim14_diff, tim2_adjustment, tcxo_ppm);
+        printf("%lu %.3f %u %u %u %d - %.3f - - %.3f no data\n", time(NULL), diff, milli_diff, tim2_diff, tim14_diff, tim2_adjustment, tcxo_ppm, calc_tcxo_aging());
       }
     } else {
-      printf("%lu %.3f - - - - - -\n", time(NULL), diff);
+      printf("%lu %.3f - - - - - - %.3f\n", time(NULL), diff, calc_tcxo_aging());
       memcpy(&last_page4, &page4, sizeof(page4));
     }
     fflush(stdout);
