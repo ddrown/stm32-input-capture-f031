@@ -10,6 +10,7 @@
 #include "i2c.h"
 #include "i2c_registers.h"
 #include "rtc_data.h"
+#include "aging.h"
 
 float lse_calibration_to_ppm(uint16_t calib) {
   return (calib & CALIBRATION_ADDCLK) ? 488.281 : 0.0 - 0.953674 * (calib & CALIBRATION_SUBCLK_MASK);
@@ -255,24 +256,6 @@ static void setcalibration(int fd, uint32_t addclk, uint32_t subclk) {
   _setcalibration(fd, page4.lse_calibration);
 
   printf("set to %u (%.3f ppm)\n", page4.lse_calibration, lse_calibration_to_ppm(page4.lse_calibration));
-}
-
-float aging_b = 0;
-uint32_t aging_d = 0;
-void read_tcxo_aging() {
-  FILE *f;
-
-  f = fopen("tcxo-aging","r");
-  if(f == NULL) {
-    return;
-  }
-  fscanf(f, "%f\n%u", &aging_b, &aging_d);
-  fclose(f);
-}
-
-float calc_tcxo_aging() {
-  float ppm = (time(NULL)-aging_d) * aging_b;
-  return ppm;
 }
 
 float read_tcxo_ppm() {

@@ -13,6 +13,7 @@
 #include "i2c_registers.h"
 #include "adc_calc.h"
 #include "vref_calc.h"
+#include "aging.h"
 
 #define SUMMARIZE_INTERVAL 64
 struct per_second_stats {
@@ -22,6 +23,7 @@ struct per_second_stats {
   uint32_t sleep_ms;
   double added_offset_ns[INPUT_CHANNELS];
   double tempcomp;
+  float aging;
   double main_freq_32s;
   double main_freq_64s;
   float temp_f;
@@ -204,7 +206,7 @@ static double tempcomp(const struct tempcomp_data *data) {
 static void before_loop() {
   if(config.verbose) {
     printf("ts delay status sleepms 1ppm 2ppm 3ppm 4ppm tempcomp 32s_ppm 64s_ppm ");
-    printf("int-temp vref vbat");
+    printf("int-temp vref vbat aging");
     printf("\n");
   }
 }
@@ -229,6 +231,9 @@ static void log_loop(struct per_second_stats *cur_stats) {
     printf("%.4f ", cur_stats->temp_f);
     printf("%.5f ", cur_stats->vref);
     printf("%.5f ", cur_stats->vbat);
+
+    printf("%.3f ", cur_stats->aging);
+
     printf("\n");
     fflush(stdout);
   }
@@ -337,6 +342,11 @@ static void summarize() {
   }
   print_data_d(stat_data_d, SUMMARIZE_INTERVAL, 5);
 
+  for(uint32_t i = 0; i < SUMMARIZE_INTERVAL; i++) {
+    stat_data_d[i] = stats[i].aging;
+  }
+  print_data_d(stat_data_d, SUMMARIZE_INTERVAL, 3);
+
   printf("\n");
   fflush(stdout);
 }
@@ -402,9 +412,11 @@ static void poll_i2c(int fd) {
     }
 
     cur_stats->tempcomp = tempcomp(&tempcomp_data);
+    cur_stats->aging = calc_tcxo_aging();
     for(uint8_t i = 0; i < INPUT_CHANNELS; i++) {
       if(!(cur_stats->status & BAD_CHANNEL_STATUS(i))) {
-        cur_stats->added_offset_ns[i] += cur_stats->tempcomp; // adjust all channels by the expected tempcomp
+	// adjust all channels by the expected tempcomp and aging
+        cur_stats->added_offset_ns[i] += cur_stats->tempcomp + (cur_stats->aging*1000);
       }
     }
     store_added_offset(cur_stats->added_offset_ns[config.main_channel-1], offsets, &first_cycle_index, &last_cycle_index);
@@ -495,6 +507,8 @@ int main(int argc, char **argv) {
   write_i2c(fd, set_page, sizeof(set_page));
   write_i2c(fd, set_main_channel, sizeof(set_main_channel));
   unlock_i2c(fd);
+
+  read_tcxo_aging();
 
   poll_i2c(fd);
 }
