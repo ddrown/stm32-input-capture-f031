@@ -17,6 +17,7 @@ uint8_t i2c_read_active();
 #define I2C_REGISTER_PAGE2 1
 #define I2C_REGISTER_PAGE3 2
 #define I2C_REGISTER_PAGE4 3
+#define I2C_REGISTER_PAGE5 4
 
 #define I2C_REGISTER_VERSION 3
 
@@ -76,7 +77,7 @@ extern struct i2c_registers_type_page3 {
   uint8_t save;                 // 1=save new values to flash
   uint8_t save_status;          // see SAVE_STATUS_X
 
-  uint8_t reserved[10];
+  uint8_t reserved[10]; // future: lse calibration, tcxo aging?
 
   uint8_t page_offset;
 } i2c_registers_page3;
@@ -97,7 +98,8 @@ extern struct i2c_registers_type_page4 {
   uint8_t set_rtc; // write values SET_RTC_DATETIME, SET_RTC_CALIBRATION, SET_RTC_SUBSECOND
 // ^^^ 12 bytes
 
-  uint32_t backup_register[2]; // 2 of the 5 rtc backup registers
+  uint32_t tim2_rtc_second;
+  uint32_t reserved_0;
 
   uint32_t LSE_millis_irq; // 1pps LSE signal vs TCXO
   uint32_t LSE_tim2_irq;
@@ -107,5 +109,15 @@ extern struct i2c_registers_type_page4 {
   uint8_t page_offset;
 // ^^^ 12+20=32 bytes
 } i2c_registers_page4;
+
+// rtc timestamp taken at page switch i2c read
+extern struct i2c_registers_type_page5 {
+  uint32_t cur_tim2;
+  uint32_t cur_millis;
+  uint32_t backup_register[5];
+  uint16_t reserved_0; // future: temp state at power on?
+  uint8_t reserved_1;
+  uint8_t page_offset;
+} i2c_registers_page5;
 
 #endif

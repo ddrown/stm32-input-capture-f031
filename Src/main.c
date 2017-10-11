@@ -117,6 +117,7 @@ int main(void)
   HAL_ADCEx_Calibration_Start(&hadc);
   i2c_slave_start();
   timer_start();
+  rtc_start();
   /* USER CODE END 2 */
 
   /* Infinite loop */

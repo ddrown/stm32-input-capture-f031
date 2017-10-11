@@ -90,6 +90,39 @@ void timer_start() {
   HAL_TIM_IC_Start_IT(&htim14, TIM_CHANNEL_1);
 }
 
+void RTC_IRQHandler(void) {
+  HAL_RTC_AlarmIRQHandler(&hrtc);
+}
+
+void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc) {
+  UNUSED(hrtc);
+
+  i2c_registers_page4.tim2_rtc_second = __HAL_TIM_GET_COUNTER(&htim2);
+}
+
+void rtc_start() {
+  RTC_AlarmTypeDef sAlarm;
+  
+  HAL_NVIC_SetPriority(RTC_IRQn, 3, 0);
+  HAL_NVIC_EnableIRQ(RTC_IRQn);
+
+  // RTC interrupt every second
+  sAlarm.AlarmTime.Hours = 0x0;
+  sAlarm.AlarmTime.Minutes = 0x0;
+  sAlarm.AlarmTime.Seconds = 0x0;
+  sAlarm.AlarmTime.SubSeconds = 0x0;
+  sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+  sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
+  sAlarm.AlarmMask = RTC_ALARMMASK_ALL;
+  sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
+  sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
+  sAlarm.AlarmDateWeekDay = 0x1;
+  sAlarm.Alarm = RTC_ALARM_A;
+  if (HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK) {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+}
+
 void print_timer_status() {
 }
 
@@ -106,6 +139,11 @@ void set_rtc_registers() {
     ((uint32_t)sDate.Date) | ((uint32_t)sDate.Month) << 5 |
     ((uint32_t)sTime.Seconds) << 9 | ((uint32_t)sTime.Minutes) << 15 |
     ((uint32_t)sTime.Hours) << 21;
+}
+
+void set_page5_registers() {
+  i2c_registers_page5.cur_tim2 = __HAL_TIM_GET_COUNTER(&htim2);
+  i2c_registers_page5.cur_millis = HAL_GetTick();
 }
 
 static void set_rtc_datetime() {

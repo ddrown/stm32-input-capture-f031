@@ -12,4 +12,7 @@ void timer_start();
 void set_rtc_registers();
 void set_rtc(uint8_t data);
 
+void set_page5_registers();
+void rtc_start();
+
 #endif

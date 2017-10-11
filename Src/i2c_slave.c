@@ -10,6 +10,7 @@ struct i2c_registers_type i2c_registers;
 struct i2c_registers_type_page2 i2c_registers_page2;
 struct i2c_registers_type_page3 i2c_registers_page3;
 struct i2c_registers_type_page4 i2c_registers_page4;
+struct i2c_registers_type_page5 i2c_registers_page5;
 
 static void *current_page = &i2c_registers;
 static uint8_t current_page_data[I2C_REGISTER_PAGE_SIZE];
@@ -34,6 +35,8 @@ void i2c_slave_start() {
 
   memset(&i2c_registers_page4, '\0', sizeof(i2c_registers_page4));
 
+  memset(&i2c_registers_page5, '\0', sizeof(i2c_registers_page5));
+
   i2c_registers.page_offset = I2C_REGISTER_PAGE1;
   i2c_registers.primary_channel = 0;
   i2c_registers.primary_channel_HZ = DEFAULT_SOURCE_HZ;
@@ -57,8 +60,11 @@ void i2c_slave_start() {
   i2c_registers_page4.page_offset = I2C_REGISTER_PAGE4;
   i2c_registers_page4.subsecond_div = (hrtc.Instance->PRER & RTC_PRER_PREDIV_S);
   i2c_registers_page4.lse_calibration = 0xffff & hrtc.Instance->CALR;
-  i2c_registers_page4.backup_register[0] = HAL_RTCEx_BKUPRead(&hrtc, 0);
-  i2c_registers_page4.backup_register[1] = HAL_RTCEx_BKUPRead(&hrtc, 1);
+
+  i2c_registers_page5.page_offset = I2C_REGISTER_PAGE5;
+  for(uint8_t i = 0; i < 5; i++) {
+    i2c_registers_page5.backup_register[i] = HAL_RTCEx_BKUPRead(&hrtc, i);
+  }
 
   HAL_I2C_EnableListen_IT(&hi2c1);
 }
@@ -93,6 +99,10 @@ static void change_page(uint8_t data) {
       current_page = &i2c_registers_page4;
       set_rtc_registers();
       break;
+    case I2C_REGISTER_PAGE5:
+      current_page = &i2c_registers_page5;
+      set_page5_registers();
+      break;
     default:
       current_page = &i2c_registers;
       break;
@@ -106,6 +116,9 @@ static void change_page(uint8_t data) {
 static void i2c_data_rcv(uint8_t position, uint8_t data) {
   if(position == I2C_REGISTER_OFFSET_PAGE) {
     change_page(data);
+    return;
+  }
+  if(position >= I2C_REGISTER_PAGE_SIZE) {
     return;
   }
 
@@ -141,12 +154,32 @@ static void i2c_data_rcv(uint8_t position, uint8_t data) {
       p[position] = data;
     } else if(position == 11) {
       set_rtc(data);
-    } else if(position > 11 && position < 20) {
+    }
+
+    return;
+  }
+
+  if(current_page == &i2c_registers_page5) {
+    uint8_t *p = (uint8_t *)&i2c_registers_page5;
+
+    if(position > 7 && position < 28) {
       p[position] = data;
-      if(position == 15) {
-        HAL_RTCEx_BKUPWrite(&hrtc, 0, i2c_registers_page4.backup_register[0]);
-      } else if(position == 19) {
-        HAL_RTCEx_BKUPWrite(&hrtc, 1, i2c_registers_page4.backup_register[1]);
+      switch(position) { // write to register on last byte write
+        case 11:
+          HAL_RTCEx_BKUPWrite(&hrtc, 0, i2c_registers_page5.backup_register[0]);
+          break;
+        case 15:
+          HAL_RTCEx_BKUPWrite(&hrtc, 1, i2c_registers_page5.backup_register[1]);
+          break;
+        case 19:
+          HAL_RTCEx_BKUPWrite(&hrtc, 2, i2c_registers_page5.backup_register[2]);
+          break;
+        case 23:
+          HAL_RTCEx_BKUPWrite(&hrtc, 3, i2c_registers_page5.backup_register[3]);
+          break;
+        case 27:
+          HAL_RTCEx_BKUPWrite(&hrtc, 4, i2c_registers_page5.backup_register[4]);
+          break;
       }
     }
 
