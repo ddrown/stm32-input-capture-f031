@@ -11,6 +11,7 @@
 #define I2C_REGISTER_PAGE2 1
 #define I2C_REGISTER_PAGE3 2
 #define I2C_REGISTER_PAGE4 3
+#define I2C_REGISTER_PAGE5 4
 #define I2C_REGISTER_VERSION 3
 
 #define SAVE_STATUS_NONE 0
@@ -106,7 +107,8 @@ struct i2c_registers_type_page4 {
   uint8_t set_rtc; // write values SET_RTC_DATETIME, SET_RTC_CALIBRATION, SET_RTC_SUBSECOND
 // ^^^ 12 bytes
 
-  uint32_t backup_register[2]; // 2 of the 5 rtc backup registers
+  uint32_t tim2_rtc_second;
+  uint32_t reserved_0;
 
   uint32_t LSE_millis_irq; // 1pps LSE signal vs TCXO
   uint32_t LSE_tim2_irq;
@@ -117,8 +119,18 @@ struct i2c_registers_type_page4 {
 // ^^^ 12+20=32 bytes
 };
 
+struct i2c_registers_type_page5 {
+  uint32_t cur_tim2;
+  uint32_t cur_millis;
+  uint32_t backup_register[5];
+  uint16_t reserved_0;
+  uint8_t reserved_1;
+  uint8_t page_offset;
+};
+
 void get_i2c_structs(int fd, struct i2c_registers_type *i2c_registers, struct i2c_registers_type_page2 *i2c_registers_page2);
 void get_rtc(int fd, struct timeval *setpage, struct i2c_registers_type_page4 *i2c_registers_page4);
+void get_timers(int fd, struct timeval *before_setpage, struct timeval *setpage, struct i2c_registers_type_page5 *i2c_registers_page5);
 void get_i2c_page3(int fd, struct i2c_registers_type_page3 *i2c_registers_page3, struct tempcomp_data *data);
 float last_i2c_time();
 

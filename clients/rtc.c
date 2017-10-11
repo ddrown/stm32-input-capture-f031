@@ -88,7 +88,7 @@ static void get(int fd) {
       now.tm_mon+1, now.tm_mday, now.tm_year+1900
       );
   ppm = lse_calibration_to_ppm(page4.lse_calibration);
-  printf("calibrate = %u (%.3f ppm) set = %u bk1 = %u bk2 = %u\n", page4.lse_calibration, ppm, page4.set_rtc, page4.backup_register[0], page4.backup_register[1]);
+  printf("calibrate = %u (%.3f ppm) set = %u\n", page4.lse_calibration, ppm, page4.set_rtc);
   printf("LSE/TIM14: milli=%u tim2=%u tim14=%u\n", page4.LSE_millis_irq, page4.LSE_tim2_irq, page4.LSE_tim14_cap);
   printf("time:%.3f offset:%.3f %s\n", rtc_ts, median, (median < 0) ? "fast" : "slow");
 }
@@ -340,6 +340,42 @@ void compare(int fd) {
   }
 }
 
+void offset(int fd) {
+  struct timeval rtc, timers, before_timers;
+  struct i2c_registers_type_page4 page4;
+  struct i2c_registers_type_page5 page5;
+  uint32_t subsecond;
+  int32_t rtt;
+  double rtc_ts, tim2_rtc_ts, local_ts, offset_s;
+  struct tm now;
+
+  while(1) {
+    get_rtc(fd, &rtc, &page4);
+    get_timers(fd, &before_timers, &timers, &page5);
+
+    rtc_ts = rtc_to_double(&page4,&now);
+
+    subsecond = page5.cur_tim2 - page4.tim2_rtc_second;
+
+    tim2_rtc_ts = (uint32_t)rtc_ts;
+    tim2_rtc_ts += subsecond / 48000000.0;
+    if(rtc_ts > tim2_rtc_ts)
+      tim2_rtc_ts += 1;
+
+    local_ts = timers.tv_sec + timers.tv_usec / 1000000.0;
+
+    offset_s = local_ts - tim2_rtc_ts;
+
+    rtt = timers.tv_usec - before_timers.tv_usec;
+    if(before_timers.tv_sec < timers.tv_sec)
+      rtt += 1000000; 
+
+    printf("%.6f %.6f %.6f %d\n", local_ts, offset_s, tim2_rtc_ts-rtc_ts, rtt);
+
+    sleep(1);
+  }
+}
+
 int main(int argc, char **argv) {
   int fd;
 
@@ -405,6 +441,11 @@ int main(int argc, char **argv) {
 
   if(strcmp(argv[1], "compare") == 0) {
     compare(fd);
+    return 0;
+  }
+
+  if(strcmp(argv[1], "offset") == 0) {
+    offset(fd);
     return 0;
   }
 
