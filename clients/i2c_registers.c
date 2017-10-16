@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
+#include <time.h>
 
 #include "i2c_registers.h"
 #include "i2c.h"
@@ -31,15 +32,15 @@ void get_rtc(int fd, struct timeval *setpage, struct i2c_registers_type_page4 *i
   }
 }
 
-void get_timers(int fd, struct timeval *before_setpage, struct timeval *setpage, struct i2c_registers_type_page5 *i2c_registers_page5) {
+void get_timers(int fd, struct timespec *before_setpage, struct timespec *setpage, struct i2c_registers_type_page5 *i2c_registers_page5) {
   uint8_t set_page[2];
 
   set_page[0] = I2C_REGISTER_OFFSET_PAGE;
   set_page[1] = I2C_REGISTER_PAGE5;
   lock_i2c(fd);
-  gettimeofday(before_setpage, NULL);
+  clock_gettime(CLOCK_REALTIME, before_setpage);
   write_i2c(fd, set_page, sizeof(set_page));
-  gettimeofday(setpage, NULL);
+  clock_gettime(CLOCK_REALTIME, setpage);
   read_i2c(fd, i2c_registers_page5, sizeof(struct i2c_registers_type_page5));
   unlock_i2c(fd);
 

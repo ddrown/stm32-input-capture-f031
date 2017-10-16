@@ -341,13 +341,24 @@ void compare(int fd) {
 }
 
 void offset(int fd) {
-  struct timeval rtc, timers, before_timers;
+  struct timeval rtc;
+  struct timespec timers, before_timers;
   struct i2c_registers_type_page4 page4;
   struct i2c_registers_type_page5 page5;
-  uint32_t subsecond;
+  uint32_t subsecond, last_tim2, second_count;
   int32_t rtt;
-  double rtc_ts, tim2_rtc_ts, local_ts, offset_s;
+  double rtc_ts, offset_tim2;
+  int64_t offset_ns;
+  uint64_t local_ts, tim2_rtc_ts, last_local_ts;
   struct tm now;
+  float tcxo_ppm;
+
+  read_tcxo_aging();
+
+  offset_tim2 = 0;
+  last_tim2 = 0;
+  last_local_ts = 0;
+  second_count = 0;
 
   while(1) {
     get_rtc(fd, &rtc, &page4);
@@ -357,20 +368,38 @@ void offset(int fd) {
 
     subsecond = page5.cur_tim2 - page4.tim2_rtc_second;
 
-    tim2_rtc_ts = (uint32_t)rtc_ts;
-    tim2_rtc_ts += subsecond / 48000000.0;
-    if(rtc_ts > tim2_rtc_ts)
-      tim2_rtc_ts += 1;
+    tim2_rtc_ts = subsecond / 0.048;
+    if(tim2_rtc_ts > 1000000000) // if tim2_rtc_second is from a second ago
+      tim2_rtc_ts -= 1000000000;
+    tim2_rtc_ts += (uint64_t)rtc_ts * 1000000000;
 
-    local_ts = timers.tv_sec + timers.tv_usec / 1000000.0;
+    local_ts = (uint64_t)timers.tv_sec * 1000000000 + timers.tv_nsec;
 
-    offset_s = local_ts - tim2_rtc_ts;
+    offset_ns = local_ts - tim2_rtc_ts;
 
-    rtt = timers.tv_usec - before_timers.tv_usec;
+    rtt = timers.tv_nsec/1000 - before_timers.tv_nsec/1000;
     if(before_timers.tv_sec < timers.tv_sec)
       rtt += 1000000; 
 
-    printf("%.6f %.6f %.6f %d\n", local_ts, offset_s, tim2_rtc_ts-rtc_ts, rtt);
+    printf("%.6f %.6f %.6f %d %u", local_ts/1000000000.0, offset_ns/1000000000.0, tim2_rtc_ts/1000000000.0 - rtc_ts, rtt, second_count);
+
+    tcxo_ppm = read_tcxo_ppm() + calc_tcxo_aging();
+    if(last_local_ts != 0) {
+      uint32_t cycles = page5.cur_tim2 - last_tim2;
+      double this_offset, local_delta, remote_delta;
+      
+      remote_delta = cycles / (float)EXPECTED_FREQ;
+      local_delta = (local_ts - last_local_ts)/(double)1000000000.0;
+      this_offset = (remote_delta * (1 + (tcxo_ppm / 1000000.0))) - local_delta;
+      offset_tim2 += this_offset;
+      printf(" %.9f %.9f %.3f %.9f\n", offset_tim2, this_offset, tcxo_ppm, subsecond / 48000000.0);
+    } else {
+      printf("\n");
+    }
+
+    last_tim2 = page5.cur_tim2;
+    last_local_ts = local_ts;
+    second_count++;
 
     sleep(1);
   }
@@ -397,7 +426,7 @@ int main(int argc, char **argv) {
   fd = open_i2c(I2C_ADDR); 
 
   if(argc == 1) {
-    printf("commands: get, set, setsystem, setsubsecond, setcalibration, sync, compare\n");
+    printf("commands: get, set, setsystem, setsubsecond, setcalibration, sync, compare, offset\n");
     exit(1);
   }
 

@@ -130,7 +130,7 @@ struct i2c_registers_type_page5 {
 
 void get_i2c_structs(int fd, struct i2c_registers_type *i2c_registers, struct i2c_registers_type_page2 *i2c_registers_page2);
 void get_rtc(int fd, struct timeval *setpage, struct i2c_registers_type_page4 *i2c_registers_page4);
-void get_timers(int fd, struct timeval *before_setpage, struct timeval *setpage, struct i2c_registers_type_page5 *i2c_registers_page5);
+void get_timers(int fd, struct timespec *before_setpage, struct timespec *setpage, struct i2c_registers_type_page5 *i2c_registers_page5);
 void get_i2c_page3(int fd, struct i2c_registers_type_page3 *i2c_registers_page3, struct tempcomp_data *data);
 float last_i2c_time();
 
