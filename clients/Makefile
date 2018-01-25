@@ -10,6 +10,9 @@ input-capture-i2c: input-capture-i2c.o i2c.o timespec.o i2c_registers.o adc_calc
 frequency: frequency.o i2c.o i2c_registers.o float.o
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
+dump-adc: dump-adc.o i2c.o i2c_registers.o float.o
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
 timestamps-i2c: timestamps-i2c.o i2c.o i2c_registers.o timespec.o
 	$(CC) $(CFLAGS) -o $@ $^
 
