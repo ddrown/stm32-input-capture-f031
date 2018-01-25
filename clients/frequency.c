@@ -148,7 +148,8 @@ int main() {
     previous_cycles[i] = 0;
   }
 
-  printf("ts sleep ch0 ch1 tcxo ppm0_16s ppm0 sys s0 ppm1 s1 off0 off1\n");
+  //printf("ts sleep ch0 ch1 tcxo ppm0_16s ppm0 sys s0 ppm1 s1 off0 off1\n");
+  printf("ts sleep ch0 ch1 ch0_freq ch1_freq\n");
   while(1) {
     uint32_t sleepms;
     float tcxo_ppm, sys_ppm;
@@ -164,13 +165,15 @@ int main() {
 
     sleepms = sleep_calc(&i2c_registers);
 
-    for(uint8_t i = 0; i < CHANNELS; i++) {
-      update_offsets((uint64_t *)&offsets[i], &counts[i], &previous_cycles[i], ns_per_cycle, i2c_registers.tim2_at_cap[i]);
-      ch_ppm[i] = ppm((uint64_t *)&offsets[i], counts[i], &ch_s[i], 64);
+    printf("%lu %u %u %u %u %u %u %u %u %u\n", time(NULL), sleepms,
+            i2c_registers.tim2_at_cap[0], i2c_registers.tim2_at_cap[1], i2c_registers.tim2_at_cap[2], i2c_registers.tim2_at_cap[3],
+            (i2c_registers.tim2_at_cap[0] - previous_cycles[0]), (i2c_registers.tim2_at_cap[1] - previous_cycles[1]),
+            (i2c_registers.tim2_at_cap[2] - previous_cycles[2]), (i2c_registers.tim2_at_cap[3] - previous_cycles[3])
+          );
+    fflush(stdout);
+    for(uint8_t i = 0; i < 4; i++) {
+      previous_cycles[i] = i2c_registers.tim2_at_cap[i];
     }
-    ch0_16s = ppm((uint64_t *)&offsets[0], counts[0], NULL, 16);
-
-    printf("%lu %u %u %u %.3f %.3f %.3f %.3f %u %.3f %u %llu %llu\n", time(NULL), sleepms, i2c_registers.tim2_at_cap[0], i2c_registers.tim2_at_cap[1], tcxo_ppm, ch0_16s, ch_ppm[0], sys_ppm, ch_s[0], ch_ppm[1], ch_s[1], offsets[0][counts[0]-1], offsets[1][counts[1]-1]);
 
     usleep(sleepms*1000);
   }
