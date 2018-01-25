@@ -62,7 +62,7 @@ struct i2c_registers_type_page3 {
    * byte 3: mantissa bits 16-8
    * byte 4: mantissa bits 7-0
    * they describe the expected frequency error in ppm:
-   * ppm = tcxo_a + tcxo_b * (F - tcxo_c) + tcxo_d * pow(F - tcxo_c, 2)
+   * ppm = tcxo_a + tcxo_b * (F - tcxo_d) + tcxo_c * pow(F - tcxo_d, 2)
    * where F is the temperature from the internal_temp sensor in Fahrenheit
    */
   uint32_t tcxo_a;
