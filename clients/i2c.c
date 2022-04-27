@@ -89,9 +89,9 @@ void read_i2c(int fd, void *buffer, ssize_t len) {
 int open_i2c(uint16_t i2c_addr) {
   int fd;
 
-  fd = open("/dev/i2c-1", O_RDWR);
+  fd = open(I2C_BUS_DEV, O_RDWR);
   if (fd < 0) {
-    perror("open /dev/i2c-1 failed");
+    perror("open " I2C_BUS_DEV " failed");
     exit(1);
   }
 
