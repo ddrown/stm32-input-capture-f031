@@ -13,8 +13,8 @@ frequency: frequency.o i2c.o i2c_registers.o float.o
 dump-adc: dump-adc.o i2c.o i2c_registers.o float.o
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
-timestamps-i2c: timestamps-i2c.o i2c.o i2c_registers.o timespec.o
-	$(CC) $(CFLAGS) -o $@ $^
+timestamps-i2c: timestamps-i2c.o i2c.o i2c_registers.o timespec.o float.o adc_calc.o vref_calc.o tempcomp.o avg.o
+	$(CC) $(CFLAGS) -o $@ $^ -lm
 
 timestamps-gpio: timestamps-gpio.o i2c.o i2c_registers.o timespec.o
 	$(CC) $(CFLAGS) -o $@ $^ -lwiringPi
