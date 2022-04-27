@@ -7,6 +7,11 @@
 static float aging_b = 0;
 static uint32_t aging_d = 0;
 
+/* examples from two TCXOs:
+ * b = -0.0000000163855  d = 1497219000
+ * b = -0.00000000688527 d = 1493907000
+ */
+
 void read_tcxo_aging() {
   FILE *f;
 
