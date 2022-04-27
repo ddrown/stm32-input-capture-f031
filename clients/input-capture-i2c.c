@@ -14,6 +14,7 @@
 #include "adc_calc.h"
 #include "vref_calc.h"
 #include "aging.h"
+#include "tempcomp.h"
 
 #define SUMMARIZE_INTERVAL 64
 struct per_second_stats {
@@ -195,12 +196,6 @@ static int add_cycles(uint32_t *status_flags, double *added_offset_ns, const str
   }
 
   return retval;
-}
-
-// in ppb units
-static double tempcomp(const struct tempcomp_data *data) {
-  float temp_f = last_temp()*9.0/5.0+32.0;
-  return (data->tcxo_a + data->tcxo_b * (temp_f - data->tcxo_d) + data->tcxo_c * pow(temp_f - data->tcxo_d, 2)) * 1000.0;
 }
 
 static void before_loop() {
