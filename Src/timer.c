@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <math.h>
 
+#include "main.h"
 #include "timer.h"
 #include "uart.h"
 #include "i2c_slave.h"
@@ -119,7 +120,7 @@ void rtc_start() {
   sAlarm.AlarmDateWeekDay = 0x1;
   sAlarm.Alarm = RTC_ALARM_A;
   if (HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK) {
-    _Error_Handler(__FILE__, __LINE__);
+    Error_Handler();
   }
 }
 
