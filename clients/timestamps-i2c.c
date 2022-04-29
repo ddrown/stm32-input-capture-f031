@@ -91,7 +91,7 @@ int main() {
     }
 
     uint32_t diff = page5.cur_tim2-basetime_tim2;
-    double ppb = tempcomp(&tempcomp_data) + 270;
+    double ppb = tempcomp(&tempcomp_data);
     double duration = (diff / (double)EXPECTED_FREQ) * (1 + ppb / 1000000000.0);
     double seconds;
     struct timespec diff_ts, ts_now, offset;
