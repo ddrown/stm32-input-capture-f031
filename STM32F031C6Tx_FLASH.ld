@@ -174,7 +174,7 @@ SECTIONS
   } >RAM
 
   /* the section for flash that can be erased and rewritten */
-  .rwflash :
+  .rwflash (NOLOAD) :
   {
     . = ALIGN(4);
     PROVIDE(start_rwflash = . );
