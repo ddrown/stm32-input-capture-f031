@@ -9,8 +9,6 @@ uint8_t i2c_read_active();
 
 #define I2C_REGISTER_PAGE_SIZE 32
 
-#define I2C_REGISTER_PRIMARY_CHANNEL 28
-#define I2C_REGISTER_PRIMARY_CHANNEL_HZ 29
 #define I2C_REGISTER_OFFSET_PAGE 31
 
 #define I2C_REGISTER_PAGE1 0
@@ -19,7 +17,7 @@ uint8_t i2c_read_active();
 #define I2C_REGISTER_PAGE4 3
 #define I2C_REGISTER_PAGE5 4
 
-#define I2C_REGISTER_VERSION 3
+#define I2C_REGISTER_VERSION 4
 
 #define SAVE_STATUS_NONE 0
 #define SAVE_STATUS_OK 1
@@ -29,16 +27,10 @@ uint8_t i2c_read_active();
 extern struct i2c_registers_type {
   // start 0 len 4
   uint32_t milliseconds_now;
-  // start 4 len 4
-  uint32_t milliseconds_irq_primary;
-  // start 8 len 16
-  uint32_t tim2_at_cap[4];
-  // start 24 len 4
-  uint8_t ch_count[4];
-  // start 28 len 1
-  uint8_t primary_channel;
-  // start 29 len 1
-  uint8_t primary_channel_HZ;
+  // start 4 len 24
+  uint32_t reserved1[6];
+  // start 28 len 2
+  uint16_t reserved2;
   // start 30 len 1
   uint8_t version;
   // start 31 len 1
@@ -47,13 +39,10 @@ extern struct i2c_registers_type {
 
 extern struct i2c_registers_type_page2 {
   uint32_t last_adc_ms;
-  uint16_t internal_temp;
-  uint16_t internal_vref;
-  uint16_t internal_vbat;
-  uint16_t ts_cal1;     // internal_temp value at 30C+/-5C @3.3V+/-10mV
-  uint16_t ts_cal2;     // internal_temp value at 110C+/-5C @3.3V+/-10mV
-  uint16_t vrefint_cal; // internal_vref value at 30C+/-5C @3.3V+/-10mV
-  uint8_t reserved[15];
+  uint16_t internal_temp_mF;
+  uint16_t internal_vref_mv;
+  uint16_t internal_vbat_mv;
+  uint8_t reserved[21];
   uint8_t page_offset;
 } i2c_registers_page2;
 

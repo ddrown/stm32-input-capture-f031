@@ -10,65 +10,53 @@
 
 #define LSE_DIVIDED_FREQ 32
 static uint8_t lse_counts = LSE_DIVIDED_FREQ;
-static uint8_t counts_primary = DEFAULT_SOURCE_HZ;
 
-static const uint8_t channel_values[] = {TIM_CHANNEL_1, TIM_CHANNEL_2, TIM_CHANNEL_3, TIM_CHANNEL_4};
-static const uint16_t overflow_flags[] = {TIM_FLAG_CC1OF, TIM_FLAG_CC2OF, TIM_FLAG_CC3OF, TIM_FLAG_CC4OF};
+// in hundreds of picoseconds, range +/-214ms
+static int32_t offset_ps = 0;
+static int32_t static_ppt = 0;
+// 48MHz, in hundreds of picoseconds
+#define PS_PER_COUNT 208
+#define DEFAULT_RELOAD 47999999
+// limit movement to about +/-312 ppm
+#define MAX_ADJUST 15000
 
-static inline void tim2_channel(uint32_t channel, uint32_t milli_irq) {
-  if(channel == i2c_registers.primary_channel) {
-    counts_primary--;
-    if(counts_primary == 0) {
-      i2c_registers.milliseconds_irq_primary = milli_irq;
-      i2c_registers.tim2_at_cap[channel] = HAL_TIM_ReadCapturedValue(&htim2, channel_values[channel]);
+static uint32_t lastadjust = DEFAULT_RELOAD;
+static enum {PRESCALE_NORMAL, PRESCALE_PENDING, PRESCALE_ACTIVE} pending_prescale = PRESCALE_NORMAL;
 
-      if(i2c_registers.primary_channel_HZ > 0) {
-        counts_primary = i2c_registers.primary_channel_HZ;
-      } else {
-        counts_primary = i2c_registers.primary_channel_HZ = DEFAULT_SOURCE_HZ;
-      }
-    }
-    if(__HAL_TIM_GET_FLAG(&htim2, overflow_flags[channel])) { // there was an overflow event
-      // don't consider this as the normal counts_primary, as it was probably noise
-      __HAL_TIM_CLEAR_FLAG(&htim2, overflow_flags[channel]);
-    }
-  } else {
-    i2c_registers.tim2_at_cap[channel] = HAL_TIM_ReadCapturedValue(&htim2, channel_values[channel]);
-    i2c_registers.ch_count[channel]++;
-    if(__HAL_TIM_GET_FLAG(&htim2, overflow_flags[channel])) { // there was an overflow event
-      i2c_registers.ch_count[channel]++;
-      __HAL_TIM_CLEAR_FLAG(&htim2, overflow_flags[channel]);
-    }
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+  if(pending_prescale == PRESCALE_PENDING) {
+    htim2.Instance->ARR = lastadjust;
+    pending_prescale = PRESCALE_ACTIVE;
+  } else if(pending_prescale == PRESCALE_ACTIVE) {
+    htim2.Instance->ARR = DEFAULT_RELOAD;
+    pending_prescale = PRESCALE_NORMAL;
   }
+}
+
+void adjust_pps() {
+  int32_t offset_count;
+
+  // in hundreds of picoseconds
+  offset_ps -= (timer_ppt() + static_ppt) / 100;
+  offset_count = offset_ps / PS_PER_COUNT;
+
+  if(offset_count > MAX_ADJUST)
+    offset_count = MAX_ADJUST;
+  if(offset_count < -1*MAX_ADJUST)
+    offset_count = -1*MAX_ADJUST;
+
+  // remove the adjusted part, leave the rest
+  offset_ps -= offset_count * PS_PER_COUNT;
+  lastadjust = DEFAULT_RELOAD - offset_count;
+  pending_prescale = PRESCALE_PENDING;
 }
 
 // TIM2&TIM14 input capture 
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
-  uint32_t tim2_at_irq;
-  uint32_t milliseconds_irq;
+  const uint32_t tim2_at_irq = __HAL_TIM_GET_COUNTER(&htim2);
+  const uint32_t milliseconds_irq = HAL_GetTick();
 
-  // TODO: save the difference between tim2_at_irq and tim2_at_cap in i2c_registers_page2?
-  tim2_at_irq = __HAL_TIM_GET_COUNTER(&htim2);
-  milliseconds_irq = HAL_GetTick();
-
-  if(htim == &htim2) {
-    switch(htim->Channel) {
-      case HAL_TIM_ACTIVE_CHANNEL_1:
-        tim2_channel(0, milliseconds_irq);
-        break;
-      case HAL_TIM_ACTIVE_CHANNEL_2:
-        tim2_channel(1, milliseconds_irq);
-        break;
-      case HAL_TIM_ACTIVE_CHANNEL_3:
-        tim2_channel(2, milliseconds_irq);
-        break;
-      case HAL_TIM_ACTIVE_CHANNEL_4:
-        tim2_channel(3, milliseconds_irq);
-        break;
-      default:
-        break;
-    }
-  } else if(htim == &htim14) {
+  if(htim == &htim14) {
     if(htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1) {
       lse_counts--;
       if(lse_counts == 0) {
@@ -81,14 +69,43 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
   }
 }
 
+// caller should limit offset to prevent wraps
+void add_offset(int32_t offset) {
+  offset_ps += offset;
+}
+
+void set_frequency(int32_t frequency) {
+  static_ppt = frequency;
+}
+
 void timer_start() {
-  HAL_TIM_Base_Start(&htim2);
-  HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_1);
-  HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_2);
-  HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_3);
-  HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_4);
+  HAL_TIM_Base_Start_IT(&htim2);
   HAL_TIM_Base_Start(&htim14);
   HAL_TIM_IC_Start_IT(&htim14, TIM_CHANNEL_1);
+}
+
+// these values are from a specific TCXO, you'll need to measure your own hardware for best results.
+// fixed-point math is used to save flash space, Cortex-M0 uses software floating point
+// most terms are multipled by 1e6
+// g(x) = TEMP_ADJUST_A + TEMP_ADJUST_B * (x + TEMP_ADJUST_C) + ((x + TEMP_ADJUST_C)**2) / TEMP_ADJUST_D
+
+// 1.234535 * 1,000,000
+#define TEMP_ADJUST_A 1234535
+// 0.02229774 * 1,000,000
+#define TEMP_ADJUST_B 22298
+// 1.215454 * 1,000,000
+#define TEMP_ADJUST_C 1215454
+// 1/0.0002962121 * -1,000,000
+#define TEMP_ADJUST_D -3375959321
+
+// limits: +/- 2,147 ppm
+int32_t timer_ppt() {
+  const int32_t temp_uF = i2c_registers_page2.internal_temp_mF * 1000;
+  const int64_t ppt_a64 = TEMP_ADJUST_B * (int64_t)(temp_uF + TEMP_ADJUST_C) / 1000000;
+  const int64_t ppt_b64 = ((int64_t)(temp_uF + TEMP_ADJUST_C))*(temp_uF + TEMP_ADJUST_C) / TEMP_ADJUST_D;
+  const int64_t ppt = TEMP_ADJUST_A + ppt_a64 + ppt_b64;
+
+  return ppt;
 }
 
 void RTC_IRQHandler(void) {
@@ -122,9 +139,6 @@ void rtc_start() {
   if (HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK) {
     Error_Handler();
   }
-}
-
-void print_timer_status() {
 }
 
 void set_rtc_registers() {

@@ -124,13 +124,23 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+#define COUNT_PER_MS 48000
+    uint32_t next_adc = 50 * COUNT_PER_MS; // start at 50ms
+    while(1) {
+      while(__HAL_TIM_GET_COUNTER(&htim2) < next_adc) { }
+      adc_poll();
+      next_adc += 100 * COUNT_PER_MS; // every 100ms
+      if(next_adc > 1000 * COUNT_PER_MS) {
+        break;
+      }
+    }
+    // happens after 950ms
+    update_adc();
 
-    /* debugging code
-    print_timer_status();
-    i2c_show_data();
-     */
-    adc_poll();
-    HAL_Delay(100);
+    adjust_pps();
+
+    // wait till wrap to 0ms
+    while(__HAL_TIM_GET_COUNTER(&htim2) >= 950 * COUNT_PER_MS) { }
   }
   /* USER CODE END 3 */
 }

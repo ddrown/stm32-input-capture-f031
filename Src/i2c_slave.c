@@ -21,11 +21,6 @@ static uint8_t i2c_transfer_position;
 static enum {STATE_WAITING, STATE_GET_ADDR, STATE_GET_DATA, STATE_SEND_DATA, STATE_DROP_DATA} i2c_transfer_state;
 static uint8_t i2c_data;
 
-// addresses from the STM32F030 datasheet
-uint16_t *ts_cal1 = (uint16_t *)0x1ffff7b8;
-uint16_t *ts_cal2 = (uint16_t *)0x1ffff7c2;
-uint16_t *vrefint_cal = (uint16_t *)0x1ffff7ba;
-
 void i2c_slave_start() {
   memset(&i2c_registers, '\0', sizeof(i2c_registers));
 
@@ -38,15 +33,10 @@ void i2c_slave_start() {
   memset(&i2c_registers_page5, '\0', sizeof(i2c_registers_page5));
 
   i2c_registers.page_offset = I2C_REGISTER_PAGE1;
-  i2c_registers.primary_channel = 0;
-  i2c_registers.primary_channel_HZ = DEFAULT_SOURCE_HZ;
   i2c_registers.version = I2C_REGISTER_VERSION;
   memcpy(current_page_data, current_page, I2C_REGISTER_PAGE_SIZE);
 
   i2c_registers_page2.page_offset = I2C_REGISTER_PAGE2;
-  i2c_registers_page2.ts_cal1 = *ts_cal1;
-  i2c_registers_page2.ts_cal2 = *ts_cal2;
-  i2c_registers_page2.vrefint_cal = *vrefint_cal;
 
   i2c_registers_page3.page_offset = I2C_REGISTER_PAGE3;
   i2c_registers_page3.tcxo_a = tcxo_calibration[0];
@@ -123,15 +113,6 @@ static void i2c_data_rcv(uint8_t position, uint8_t data) {
   }
 
   if(current_page == &i2c_registers) {
-    uint8_t *p = (uint8_t *)&i2c_registers;
-
-    switch(position) {
-      case I2C_REGISTER_PRIMARY_CHANNEL:
-      case I2C_REGISTER_PRIMARY_CHANNEL_HZ:
-        p[position] = data;
-        break;
-    }
-
     return;
   } 
   
@@ -236,7 +217,4 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
 
 void HAL_I2C_AbortCpltCallback(I2C_HandleTypeDef *hi2c) {
   i2c_transfer_state = STATE_DROP_DATA;
-}
-
-void i2c_show_data() {
 }
