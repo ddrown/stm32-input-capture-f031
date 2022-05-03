@@ -1,0 +1,29 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "__weak=\"__attribute__((weak))\"",
+                "__packed=\"__attribute__((__packed__))\"",
+                "USE_HAL_DRIVER",
+                "STM32F031x6",
+                "_GNU_SOURCE"
+            ],
+            "compilerPath": "/usr/lib64/ccache/arm-none-eabi-gcc",
+            "cStandard": "c17",
+            "cppStandard": "c++14",
+            "intelliSenseMode": "linux-gcc-arm",
+            "compilerArgs": [
+                "-IDrivers/CMSIS/Device/ST/STM32F0xx/Include",
+                "-IDrivers/CMSIS/Include",
+                "-IDrivers/STM32F0xx_HAL_Driver/Inc",
+                "-IDrivers/STM32F0xx_HAL_Driver/Inc/Legacy",
+                "-IInc"
+            ]
+        }
+    ],
+    "version": 4
+}

@@ -16,3 +16,4 @@ clients/calibration
 *-graph/samples
 *typescript
 clients/rtc.sync.log
+tests/sizes
