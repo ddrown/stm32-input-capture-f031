@@ -93,7 +93,7 @@ void get_i2c_structs(int fd, struct i2c_registers_type *i2c_registers, struct i2
   i2c_time = end.tv_sec + end.tv_usec / 1000000.0;
 }
 
-void get_i2c_page3(int fd, struct i2c_registers_type_page3 *i2c_registers_page3, struct tempcomp_data *data) {
+void get_i2c_page3(int fd, struct i2c_registers_type_page3 *i2c_registers_page3) {
   uint8_t set_page[2];
 
   set_page[0] = I2C_REGISTER_OFFSET_PAGE;
@@ -107,9 +107,4 @@ void get_i2c_page3(int fd, struct i2c_registers_type_page3 *i2c_registers_page3,
     printf("got wrong page offset: %u != %u\n", i2c_registers_page3->page_offset, I2C_REGISTER_PAGE3);
     exit(1);
   }
-
-  data->tcxo_a = ntohf(i2c_registers_page3->tcxo_a);
-  data->tcxo_b = ntohf(i2c_registers_page3->tcxo_b);
-  data->tcxo_c = ntohf(i2c_registers_page3->tcxo_c);
-  data->tcxo_d = ntohf(i2c_registers_page3->tcxo_d);
 }

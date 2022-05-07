@@ -40,4 +40,10 @@ pcf2129: pcf2129.o i2c.o
 calibration: calibration.o i2c.o i2c_registers.o adc_calc.o vref_calc.o avg.o rtc_data.o float.o
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
+dump: dump.o i2c.o
+	$(CC) $(CFLAGS) -o $@ $^
+
+offset: offset.o i2c.o i2c_registers.o
+	$(CC) $(CFLAGS) -o $@ $^
+
 .PHONY: all

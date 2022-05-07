@@ -12,7 +12,7 @@
 #define I2C_REGISTER_PAGE3 2
 #define I2C_REGISTER_PAGE4 3
 #define I2C_REGISTER_PAGE5 4
-#define I2C_REGISTER_VERSION 3
+#define I2C_REGISTER_VERSION 4
 
 #define SAVE_STATUS_NONE 0
 #define SAVE_STATUS_OK 1
@@ -23,68 +23,42 @@
 #define I2C_REGISTER_PRIMARY_CHANNEL_HZ 29
 
 struct i2c_registers_type {
-  // start 0 len 4
   uint32_t milliseconds_now;
-  // start 4 len 4
-  uint32_t milliseconds_irq_primary;
-  // start 8 len 16
-  uint32_t tim2_at_cap[4];
-  // start 24 len 4
-  uint8_t ch_count[4];
-  // start 28 len 1
-  uint8_t primary_channel;
-  // start 29 len 1
-  uint8_t primary_channel_HZ;
-  // start 30 len 1
+  int32_t offset_ps;
+  int32_t static_ppt;
+  int32_t last_ppt;
+  uint32_t lastadjust;
+  uint32_t reserved1[2];
+  uint16_t reserved2;
   uint8_t version;
-  // start 31 len 1
   uint8_t page_offset;
 };
 
 struct i2c_registers_type_page2 {
   uint32_t last_adc_ms;
-  uint16_t internal_temp;
-  uint16_t internal_vref;
-  uint16_t internal_vbat;
-  uint16_t ts_cal1;     // internal_temp value at 30C+/-5C @3.3V+/-10mV
-  uint16_t ts_cal2;     // internal_temp value at 110C+/-5C @3.3V+/-10mV
-  uint16_t vrefint_cal; // internal_vref value at 30C+/-5C @3.3V+/-10mV
-  uint8_t reserved[15];
+  int32_t internal_temp_mF;
+  uint16_t internal_vref_mv;
+  uint16_t internal_vbat_mv;
+  uint8_t reserved[19];
   uint8_t page_offset;
 };
 
 // write from tcxo_a to save
-#define I2C_PAGE3_WRITE_LENGTH 20
+#define I2C_PAGE3_WRITE_LENGTH 24
 struct i2c_registers_type_page3 {
-  /* tcxo_X variables are floats stored as:
-   * byte 1: negative sign (1 bit), exponent bits 7-1
-   * byte 2: exponent bit 0, mantissa bits 23-17
-   * byte 3: mantissa bits 16-8
-   * byte 4: mantissa bits 7-0
-   * they describe the expected frequency error in ppm:
-   * ppm = tcxo_a + tcxo_b * (F - tcxo_d) + tcxo_c * pow(F - tcxo_d, 2)
-   * where F is the temperature from the internal_temp sensor in Fahrenheit
-   */
-  uint32_t tcxo_a;
-  uint32_t tcxo_b;
-  uint32_t tcxo_c;
-  uint32_t tcxo_d;
+  int32_t tcxo_a; // a * 10e6
+  int32_t tcxo_b; // b * 10e6
+  int64_t tcxo_c; // 1/c * -10e6
+  int32_t tcxo_d; // d * 10e6
   uint8_t max_calibration_temp; // F
   int8_t min_calibration_temp;  // F
-  uint8_t rmse_fit;             // ppb
+  uint8_t rmse_fit;             // for tcxo, in ppb
   uint8_t save;                 // 1=save new values to flash
   uint8_t save_status;          // see SAVE_STATUS_X
 
-  uint8_t reserved[10];
+  uint8_t reserved[6]; // future: lse calibration, tcxo aging?
 
   uint8_t page_offset;
-};
-
-struct tempcomp_data {
-  float tcxo_a;
-  float tcxo_b;
-  float tcxo_c;
-  float tcxo_d;
 };
 
 #define SET_RTC_DATETIME 1
@@ -131,7 +105,7 @@ struct i2c_registers_type_page5 {
 void get_i2c_structs(int fd, struct i2c_registers_type *i2c_registers, struct i2c_registers_type_page2 *i2c_registers_page2);
 void get_rtc(int fd, struct timeval *setpage, struct i2c_registers_type_page4 *i2c_registers_page4);
 void get_timers(int fd, struct timespec *before_setpage, struct timespec *setpage, struct i2c_registers_type_page5 *i2c_registers_page5);
-void get_i2c_page3(int fd, struct i2c_registers_type_page3 *i2c_registers_page3, struct tempcomp_data *data);
+void get_i2c_page3(int fd, struct i2c_registers_type_page3 *i2c_registers_page3);
 float last_i2c_time();
 
 #endif
