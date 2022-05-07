@@ -29,8 +29,15 @@ int main(int argc, char **argv) {
 
   if(strcmp(argv[1], "get") == 0) {
     get_i2c_page3(fd, &page3);
+    float a, b, c, d;
 
-    printf("a = %d, b = %d, c = %ld, d = %d\n", page3.tcxo_a, page3.tcxo_b, page3.tcxo_c, page3.tcxo_d);
+    a = page3.tcxo_a / 1000000.0;
+    b = page3.tcxo_b / 1000000.0;
+    c = 1000000.0 / page3.tcxo_c;
+    d = page3.tcxo_d / 1000000.0;
+
+    printf("a = %g, b = %g, c = %g, d = %g\n", a, b, c, d);
+    printf("raw a = %d, b = %d, c = %lld, d = %d\n", page3.tcxo_a, page3.tcxo_b, page3.tcxo_c, page3.tcxo_d);
     printf("max = %u F min = %d F\n", page3.max_calibration_temp, page3.min_calibration_temp);
     printf("rmse = %u ppb\n", page3.rmse_fit);
     printf("save: %u status: %s (%u)\n", page3.save, save_status_str(page3.save_status), page3.save_status);
@@ -47,7 +54,7 @@ int main(int argc, char **argv) {
 
     page3.tcxo_a = strtof(argv[2],NULL) * 1000000;
     page3.tcxo_b = strtof(argv[3],NULL) * 1000000;
-    page3.tcxo_c = 1.0 / strtof(argv[4],NULL) * -1000000;
+    page3.tcxo_c = 1000000.0 / strtof(argv[4],NULL);
     page3.tcxo_d = strtof(argv[5],NULL) * 1000000;
 
     page3.max_calibration_temp = atoi(argv[6]);
