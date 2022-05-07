@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 
 #include "i2c.h"
 #include "i2c_registers.h"
@@ -37,7 +38,7 @@ int main(int argc, char **argv) {
     d = page3.tcxo_d / 1000000.0;
 
     printf("a = %g, b = %g, c = %g, d = %g\n", a, b, c, d);
-    printf("raw a = %d, b = %d, c = %lld, d = %d\n", page3.tcxo_a, page3.tcxo_b, page3.tcxo_c, page3.tcxo_d);
+    printf("raw a = %d, b = %d, c = %" PRId64 ", d = %d\n", page3.tcxo_a, page3.tcxo_b, page3.tcxo_c, page3.tcxo_d);
     printf("max = %u F min = %d F\n", page3.max_calibration_temp, page3.min_calibration_temp);
     printf("rmse = %u ppb\n", page3.rmse_fit);
     printf("save: %u status: %s (%u)\n", page3.save, save_status_str(page3.save_status), page3.save_status);
