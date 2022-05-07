@@ -7,13 +7,12 @@
 #include "timer.h"
 #include "uart.h"
 #include "i2c_slave.h"
+#include "flash.h"
 
 #define LSE_DIVIDED_FREQ 32
 static uint8_t lse_counts = LSE_DIVIDED_FREQ;
 
 // in hundreds of picoseconds, range +/-214ms
-static int32_t offset_ps = 0;
-static int32_t static_ppt = 0;
 // 48MHz, in hundreds of picoseconds
 #define PS_PER_COUNT 208
 #define DEFAULT_RELOAD 47999999
@@ -36,9 +35,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 void adjust_pps() {
   int32_t offset_count;
 
-  // in hundreds of picoseconds
-  offset_ps -= (timer_ppt() + static_ppt) / 100;
-  offset_count = offset_ps / PS_PER_COUNT;
+  i2c_registers.last_ppt = timer_ppt();
+  // in hundreds of picoseconds, adjust offset by expected freq
+  i2c_registers.offset_ps += (i2c_registers.last_ppt + i2c_registers.static_ppt) / 100;
+  offset_count = i2c_registers.offset_ps / PS_PER_COUNT;
 
   if(offset_count > MAX_ADJUST)
     offset_count = MAX_ADJUST;
@@ -46,8 +46,9 @@ void adjust_pps() {
     offset_count = -1*MAX_ADJUST;
 
   // remove the adjusted part, leave the rest
-  offset_ps -= offset_count * PS_PER_COUNT;
+  i2c_registers.offset_ps -= offset_count * PS_PER_COUNT;
   lastadjust = DEFAULT_RELOAD - offset_count;
+  i2c_registers.lastadjust = lastadjust;
   pending_prescale = PRESCALE_PENDING;
 }
 
@@ -71,15 +72,16 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
 
 // caller should limit offset to prevent wraps
 void add_offset(int32_t offset) {
-  offset_ps += offset;
+  i2c_registers.offset_ps += offset;
 }
 
 void set_frequency(int32_t frequency) {
-  static_ppt = frequency;
+  i2c_registers.static_ppt = frequency;
 }
 
 void timer_start() {
   HAL_TIM_Base_Start_IT(&htim2);
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
   HAL_TIM_Base_Start(&htim14);
   HAL_TIM_IC_Start_IT(&htim14, TIM_CHANNEL_1);
 }
@@ -87,23 +89,17 @@ void timer_start() {
 // these values are from a specific TCXO, you'll need to measure your own hardware for best results.
 // fixed-point math is used to save flash space, Cortex-M0 uses software floating point
 // most terms are multipled by 1e6
-// g(x) = TEMP_ADJUST_A + TEMP_ADJUST_B * (x + TEMP_ADJUST_C) + ((x + TEMP_ADJUST_C)**2) / TEMP_ADJUST_D
-
-// 1.234535 * 1,000,000
-#define TEMP_ADJUST_A 1234535
-// 0.02229774 * 1,000,000
-#define TEMP_ADJUST_B 22298
-// 1.215454 * 1,000,000
-#define TEMP_ADJUST_C 1215454
-// 1/0.0002962121 * -1,000,000
-#define TEMP_ADJUST_D -3375959321
+// g(x) = TEMP_ADJUST_A + TEMP_ADJUST_B * (x - TEMP_ADJUST_D) + ((x - TEMP_ADJUST_D)**2) / TEMP_ADJUST_C
 
 // limits: +/- 2,147 ppm
 int32_t timer_ppt() {
+  if (tcxo_calibration.tcxo_d == 0)
+    return 0;
+
   const int32_t temp_uF = i2c_registers_page2.internal_temp_mF * 1000;
-  const int64_t ppt_a64 = TEMP_ADJUST_B * (int64_t)(temp_uF + TEMP_ADJUST_C) / 1000000;
-  const int64_t ppt_b64 = ((int64_t)(temp_uF + TEMP_ADJUST_C))*(temp_uF + TEMP_ADJUST_C) / TEMP_ADJUST_D;
-  const int64_t ppt = TEMP_ADJUST_A + ppt_a64 + ppt_b64;
+  const int64_t ppt_a64 = tcxo_calibration.tcxo_b * (int64_t)(temp_uF - tcxo_calibration.tcxo_d) / 1000000;
+  const int64_t ppt_b64 = ((int64_t)(temp_uF - tcxo_calibration.tcxo_d))*(temp_uF - tcxo_calibration.tcxo_d) / tcxo_calibration.tcxo_c;
+  const int64_t ppt = tcxo_calibration.tcxo_a + ppt_a64 + ppt_b64;
 
   return ppt;
 }

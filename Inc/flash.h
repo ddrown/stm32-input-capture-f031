@@ -1,7 +1,7 @@
 #ifndef FLASH_H
 #define FLASH_H
 
-extern uint32_t tcxo_calibration[];
+extern struct i2c_registers_type_page3 tcxo_calibration;
 
 void write_flash_data();
 

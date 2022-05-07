@@ -25,48 +25,38 @@ uint8_t i2c_read_active();
 #define SAVE_STATUS_WRITE_FAIL 3
 
 extern struct i2c_registers_type {
-  // start 0 len 4
   uint32_t milliseconds_now;
-  // start 4 len 24
-  uint32_t reserved1[6];
-  // start 28 len 2
+  int32_t offset_ps;
+  int32_t static_ppt;
+  int32_t last_ppt;
+  uint32_t lastadjust;
+  uint32_t reserved1[2];
   uint16_t reserved2;
-  // start 30 len 1
   uint8_t version;
-  // start 31 len 1
   uint8_t page_offset;
 } i2c_registers;
 
 extern struct i2c_registers_type_page2 {
   uint32_t last_adc_ms;
-  uint16_t internal_temp_mF;
+  int32_t internal_temp_mF;
   uint16_t internal_vref_mv;
   uint16_t internal_vbat_mv;
-  uint8_t reserved[21];
+  uint8_t reserved[19];
   uint8_t page_offset;
 } i2c_registers_page2;
 
 extern struct i2c_registers_type_page3 {
-  /* tcxo_X variables are floats stored as:
-   * byte 1: negative sign (1 bit), exponent bits 7-1
-   * byte 2: exponent bit 0, mantissa bits 23-17
-   * byte 3: mantissa bits 16-8
-   * byte 4: mantissa bits 7-0
-   * they describe the expected frequency error in ppm:
-   * ppm = tcxo_a + tcxo_b * (F - tcxo_d) + tcxo_c * pow(F - tcxo_d, 2)
-   * where F is the temperature from the internal_temp sensor in Fahrenheit
-   */
-  uint32_t tcxo_a; // float type
-  uint32_t tcxo_b; // float type
-  uint32_t tcxo_c; // float type
-  uint32_t tcxo_d; // float type
+  int32_t tcxo_a; // a * 10e6
+  int32_t tcxo_b; // b * 10e6
+  int64_t tcxo_c; // 1/c * -10e6
+  int32_t tcxo_d; // d * 10e6
   uint8_t max_calibration_temp; // F
   int8_t min_calibration_temp;  // F
   uint8_t rmse_fit;             // for tcxo, in ppb
   uint8_t save;                 // 1=save new values to flash
   uint8_t save_status;          // see SAVE_STATUS_X
 
-  uint8_t reserved[10]; // future: lse calibration, tcxo aging?
+  uint8_t reserved[6]; // future: lse calibration, tcxo aging?
 
   uint8_t page_offset;
 } i2c_registers_page3;

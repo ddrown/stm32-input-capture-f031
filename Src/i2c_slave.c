@@ -38,14 +38,9 @@ void i2c_slave_start() {
 
   i2c_registers_page2.page_offset = I2C_REGISTER_PAGE2;
 
+  memcpy(&i2c_registers_page3, &tcxo_calibration, sizeof(tcxo_calibration));
   i2c_registers_page3.page_offset = I2C_REGISTER_PAGE3;
-  i2c_registers_page3.tcxo_a = tcxo_calibration[0];
-  i2c_registers_page3.tcxo_b = tcxo_calibration[1];
-  i2c_registers_page3.tcxo_c = tcxo_calibration[2];
-  i2c_registers_page3.tcxo_d = tcxo_calibration[3];
-  i2c_registers_page3.max_calibration_temp = tcxo_calibration[4] & 0xff;
-  i2c_registers_page3.min_calibration_temp = (tcxo_calibration[4] >> 8) & 0xff;
-  i2c_registers_page3.rmse_fit = (tcxo_calibration[4] >> 16) & 0xff;
+  i2c_registers_page3.save_status = SAVE_STATUS_NONE;
 
   i2c_registers_page4.page_offset = I2C_REGISTER_PAGE4;
   i2c_registers_page4.subsecond_div = (hrtc.Instance->PRER & RTC_PRER_PREDIV_S);
@@ -113,15 +108,35 @@ static void i2c_data_rcv(uint8_t position, uint8_t data) {
   }
 
   if(current_page == &i2c_registers) {
+    static union {
+      uint8_t bytes[4];
+      int32_t setting;
+    } temporary_set;
+
+    // set offset_ps
+    if (position > 3 && position < 7) {
+      temporary_set.bytes[position % 4] = data;
+    } else if (position == 7) {
+      temporary_set.bytes[3] = data;
+      add_offset(temporary_set.setting);
+
+    // set static_ppt
+    } else if (position > 7 && position < 11) {
+      temporary_set.bytes[position % 4] = data;
+    } else if (position == 11) {
+      temporary_set.bytes[3] = data;
+      set_frequency(temporary_set.setting);
+    }
+
     return;
   } 
   
   if(current_page == &i2c_registers_page3) {
     uint8_t *p = (uint8_t *)&i2c_registers_page3;
 
-    if(position < 19) {
+    if(position < 23) {
       p[position] = data;
-    } else if(position == 19 && data) {
+    } else if(position == 23 && data) {
       write_flash_data();
     }
 

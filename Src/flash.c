@@ -4,12 +4,13 @@
 #include "i2c_slave.h"
 
 // stored in rwflash section, the whole 1024 byte page has to be erased/rewritten at the same time
-uint32_t tcxo_calibration[8] __attribute__((section(".rwflash")));
+struct i2c_registers_type_page3 tcxo_calibration __attribute__((section(".rwflash")));
 
 void write_flash_data() {
   i2c_registers_page3.save_status = SAVE_STATUS_NONE;
 
-  uint32_t addr = (uint32_t)tcxo_calibration; // assumption: tcxo_calibration starts at top of page
+  // turning a pointer into an integer
+  uint32_t addr = (uint32_t)&tcxo_calibration; // assumption: tcxo_calibration starts at top of page
   FLASH_EraseInitTypeDef eraseRWFlash = {
     .TypeErase = FLASH_TYPEERASE_PAGES,
     .PageAddress = addr,
