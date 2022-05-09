@@ -7,8 +7,18 @@ The TCXO's frequency vs temperature curve is measured and stored in flash in ord
 The hat also contains an RTC with sub-second precision. Usually i2c RTCs will only tell you time to the nearest second, so you have to poll them to find out when the second changes. The RTC runs off the 32khz crystal, but can be measured in hardware against the TCXO with `clients/rtc compare`
 
 Timers used
-* TIM2 - main 32 bit timer, all 4 channels are setup as input capture
+* TIM2 - main 32 bit timer, all 4 channels are setup as pwm output (10ms high, 990ms low)
 * TIM14 - 16 bit timer, measures RTC vs TCXO on channel 1
+
+Hat pins connected to SBC/stm32 micro:
+* pin3 - I2C SDA
+* pin5 - I2C SCL
+* pin11 - stm32 rst (via jumper)
+* pin12 - PPS output CH1
+* pin13 - stm32 BOOT0 (via jumper)
+* pin18 - SWD dio (via jumper)
+* pin22 - SWD clk (via jumper)
+* pin33 - PPS output CH2
 
 settings in raspi-config:
 
@@ -63,11 +73,7 @@ SBC library code:
 
 Programming the stm32 can be done via openocd on the connected SBC.
 
-SWD programming interface is connected to SBC pins:
-* 18 - dio
-* 22 - clk
-* 11 - rst
-
 Example openocd configuration:
 * openocd.cfg - raspberry pi & stlink example
 * openocd-odroid.cfg - gpio sysfs on odroid-c2 SBC
+* openocd-stm32mp1.cfg - gpio sysfs on stm32mp157a-dk1 SBC
