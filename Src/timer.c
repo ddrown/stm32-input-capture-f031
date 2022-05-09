@@ -81,7 +81,13 @@ void set_frequency(int32_t frequency) {
 
 void timer_start() {
   HAL_TIM_Base_Start_IT(&htim2);
+#ifdef HAT_CH1
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+#elif HAT_CH2
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
+#else
+#error choose which output channel to use
+#endif
   HAL_TIM_Base_Start(&htim14);
   HAL_TIM_IC_Start_IT(&htim14, TIM_CHANNEL_1);
 }
