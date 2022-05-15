@@ -17,3 +17,5 @@ clients/calibration
 *typescript
 clients/rtc.sync.log
 tests/sizes
+*.dtbo
+/odroid-pps/pps-pin12.dts.preproc

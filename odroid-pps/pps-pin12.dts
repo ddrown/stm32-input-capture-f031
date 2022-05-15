@@ -1,0 +1,22 @@
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/meson-gxbb-gpio.h>
+#include <dt-bindings/gpio/gpio.h>
+
+/ {
+	compatible = "amlogic,meson-gxbb";
+
+	fragment@0 {
+		target-path = "/";
+		__overlay__ {
+			pps: pps {
+				compatible = "pps-gpio";
+				pinctrl-names = "default";
+				// "J2 Header Pin12"
+				gpios = <&gpio GPIOX_10 GPIO_ACTIVE_HIGH>;
+				status = "okay";
+			};
+		};
+	};
+};
