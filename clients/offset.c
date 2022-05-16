@@ -14,7 +14,7 @@ int main(int argc, char **argv) {
   fd = open_i2c(I2C_ADDR); 
 
   if(argc < 2) {
-    printf("commands: get, set\n");
+    printf("commands: get, set-offset, set-freq\n");
     exit(1);
   }
 
@@ -25,7 +25,7 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  if(strcmp(argv[1], "set") == 0) {
+  if(strcmp(argv[1], "set-offset") == 0) {
     uint8_t set_page[2];
     uint8_t set_page3[5];
     int32_t new_offset;
@@ -44,6 +44,30 @@ int main(int argc, char **argv) {
     set_page3[0] = 4; // write offset
     memcpy(set_page3+1, &new_offset, sizeof(new_offset));
     write_i2c(fd, set_page3, sizeof(new_offset)+1);
+    unlock_i2c(fd);
+
+    return 0;
+  }
+
+  if(strcmp(argv[1], "set-freq") == 0) {
+    uint8_t set_page[2];
+    uint8_t set_page3[5];
+    int32_t new_freq;
+
+    if(argc != 3) {
+      printf("set arguments: freq(ppt)\n");
+      exit(1);
+    }
+
+    new_freq = atoi(argv[2]);
+
+    set_page[0] = I2C_REGISTER_OFFSET_PAGE;
+    set_page[1] = I2C_REGISTER_PAGE1;
+    lock_i2c(fd);
+    write_i2c(fd, set_page, sizeof(set_page));
+    set_page3[0] = 8; // write offset
+    memcpy(set_page3+1, &new_freq, sizeof(new_freq));
+    write_i2c(fd, set_page3, sizeof(new_freq)+1);
     unlock_i2c(fd);
 
     return 0;

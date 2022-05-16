@@ -46,4 +46,7 @@ dump: dump.o i2c.o
 offset: offset.o i2c.o i2c_registers.o
 	$(CC) $(CFLAGS) -o $@ $^
 
+poll: poll.o i2c.o
+	$(CC) $(CFLAGS) -o $@ $^
+
 .PHONY: all

@@ -10,6 +10,7 @@ clients/set-calibration-data
 clients/timestamps-gpio
 clients/timestamps-i2c
 clients/calibration
+clients/poll
 *-graph/*.log
 *-graph/*.png
 *-graph/index.html
