@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "i2c.h"
 #include "i2c_registers.h"
@@ -36,9 +37,10 @@ int main(int argc, char **argv) {
 
     unlock_i2c(fd);
 
-    printf("%d %d %u %u %u %u %u\n", page1.offset_ps, page1.last_ppt, page1.lastadjust, page2.internal_temp_mF, page2.internal_vref_mv, page2.internal_vbat_mv, page5.cur_tim2);
+    printf("%ld %d %d %u %u %u %u\n", time(NULL), page1.offset_ps, page1.last_ppt, page2.internal_temp_mF, page2.internal_vref_mv, page2.internal_vbat_mv, page5.cur_tim2);
 
     next = (page1.lastadjust - page5.cur_tim2) / 48 + 500000;
+    fflush(stdout);
     usleep(next);
   }
 }

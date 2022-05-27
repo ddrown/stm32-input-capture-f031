@@ -1,0 +1,3 @@
+#!/bin/bash
+
+sudo ./poll | tee >(xz --flush-timeout=600000 >> poll.log.xz)
