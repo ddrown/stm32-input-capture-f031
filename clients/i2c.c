@@ -46,7 +46,7 @@ void write_i2c_register(int fd, uint8_t reg, uint8_t val) {
   write_i2c(fd, &data, 2);
 }
 
-void write_i2c(int fd, void *buffer, ssize_t len) {
+void write_i2c(int fd, const void *buffer, ssize_t len) {
   ssize_t status;
 
   status = write(fd, buffer, len);

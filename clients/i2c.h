@@ -3,7 +3,7 @@
 
 #define I2C_BUS_DEV "/dev/i2c-0"
 
-void write_i2c(int fd, void *buffer, ssize_t len);
+void write_i2c(int fd, const void *buffer, ssize_t len);
 void read_i2c(int fd, void *buffer, ssize_t len);
 int open_i2c(uint16_t i2c_addr);
 int unlock_i2c(int fd);
