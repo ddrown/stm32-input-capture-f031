@@ -13,7 +13,8 @@
 #include "aging.h"
 
 float lse_calibration_to_ppm(uint16_t calib) {
-  return (calib & CALIBRATION_ADDCLK) ? 488.281 : 0.0 - 0.953674 * (calib & CALIBRATION_SUBCLK_MASK);
+  float base_ppm = (calib & CALIBRATION_ADDCLK) ? 488.281 : 0.0;
+  return base_ppm - 0.953674 * (calib & CALIBRATION_SUBCLK_MASK);
 }
 
 uint16_t ppm_to_lse_calibration(float ppm) {
@@ -26,6 +27,9 @@ uint16_t ppm_to_lse_calibration(float ppm) {
   }
 
   subclock = ppm / -0.953674;
+  if (subclock > 511) {
+    subclock = 511;
+  }
 
   return calib | (subclock & CALIBRATION_SUBCLK_MASK);
 }
@@ -321,43 +325,82 @@ void compare(int fd) {
   }
 }
 
+double _offset(int fd, struct i2c_registers_type_page4 *page4) {
+  uint8_t set_page[2] = {I2C_REGISTER_OFFSET_PAGE, 0};
+  struct i2c_registers_type page1;
+  double counts, sec_offset;
+
+  lock_i2c(fd);
+  write_i2c(fd, set_page, sizeof(set_page));
+  read_i2c(fd, &page1, sizeof(page1));
+  unlock_i2c(fd);
+
+  counts = 48000000.0 / 1000000000000.0 * (page1.last_ppt + page1.static_ppt) + 48000000.0;
+  sec_offset = page4->tim2_rtc_second / counts;
+
+  // find nearest PPS
+  if (sec_offset > 0.5) {
+    sec_offset = sec_offset - 1.0;
+  }
+
+  return sec_offset;
+}
+
+float linear(double *offsets, int count, int xstep) {
+  double average = 0;
+  float average_x = 0;
+  double numerator = 0, denominator = 0;
+
+  for(int i = 0; i < count; i++) {
+    average += offsets[i];
+    average_x += xstep * i;
+  }
+  average = average / count;
+  average_x = average_x / count;
+
+  for(int i = 0; i < count; i++) {
+    double xdiff = (xstep * i) - average_x;
+    denominator += xdiff*xdiff;
+    numerator += xdiff * (offsets[i] - average);
+  }
+
+  return numerator / denominator;
+}
+
+#define OFFSET_COUNT 10
 void offset(int fd) {
   struct timeval rtc;
-  struct timespec timers, before_timers;
   struct i2c_registers_type_page4 page4;
-  struct i2c_registers_type_page5 page5;
-  uint32_t subsecond;
-  int32_t rtt;
-  double rtc_ts;
-  int64_t offset_ns;
-  uint64_t local_ts, tim2_rtc_ts;
-  struct tm now;
+  double rtc_ts, sec_offsets[OFFSET_COUNT];
+  float ppm_p, ppm_i, ppm_d, rtc_ppm;
+  uint16_t rtc_calib;
 
   while(1) {
-    get_rtc(fd, &rtc, &page4);
-    get_timers(fd, &before_timers, &timers, &page5);
+    ppm_i = 0;
+    for(int i = 0; i < OFFSET_COUNT; i++) {
+      get_rtc(fd, &rtc, &page4);
+      sec_offsets[i] = _offset(fd, &page4);
+      ppm_i += sec_offsets[i];
+      rtc_ts = rtc_to_double(&page4,NULL);
 
-    rtc_ts = rtc_to_double(&page4,&now);
+      printf("%ld M %.6f %.6f\n", time(NULL), rtc_ts, sec_offsets[i]);
+      fflush(stdout);
+      sleep(32);
+    }
 
-    subsecond = page5.cur_tim2 - page4.tim2_rtc_second;
+    rtc_ppm = lse_calibration_to_ppm(page4.lse_calibration);
 
-    tim2_rtc_ts = subsecond / 0.048;
-    if(tim2_rtc_ts > 1000000000) // if tim2_rtc_second is from a second ago
-      tim2_rtc_ts -= 1000000000;
-    tim2_rtc_ts += (uint64_t)rtc_ts * 1000000000;
+    // aim for 10 minute corrections
+    ppm_p = sec_offsets[OFFSET_COUNT-1] / 640.0 * 1000000.0;
+    ppm_i = ppm_i / OFFSET_COUNT * 300.0;
+    ppm_d = linear(sec_offsets, OFFSET_COUNT, 32) + rtc_ppm;
 
-    local_ts = (uint64_t)timers.tv_sec * 1000000000 + timers.tv_nsec;
+    rtc_calib = ppm_to_lse_calibration(ppm_p + ppm_i + ppm_d);
 
-    offset_ns = local_ts - tim2_rtc_ts;
+    _setcalibration(fd, rtc_calib);
 
-    rtt = timers.tv_nsec/1000 - before_timers.tv_nsec/1000;
-    if(before_timers.tv_sec < timers.tv_sec)
-      rtt += 1000000; 
-
-    printf("%.6f %.6f %.6f %d %u %u\n", local_ts/1000000000.0, offset_ns/1000000000.0, tim2_rtc_ts/1000000000.0 - rtc_ts, rtt, page4.tim2_rtc_second, page4.LSE_tim2_irq);
+    printf("%ld S %.3f %.3f %.3f %.3f\n", time(NULL), ppm_p, ppm_i, ppm_d, lse_calibration_to_ppm(rtc_calib));
     fflush(stdout);
-
-    sleep(60);
   }
 }
 
