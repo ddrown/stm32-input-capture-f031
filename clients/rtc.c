@@ -364,10 +364,11 @@ float linear(double *offsets, int count, int xstep) {
     numerator += xdiff * (offsets[i] - average);
   }
 
-  return numerator / denominator;
+  return numerator / denominator * 1000000;
 }
 
 #define OFFSET_COUNT 10
+#define OFFSET_INTERVAL 32
 void offset(int fd) {
   struct timeval rtc;
   struct i2c_registers_type_page4 page4;
@@ -385,7 +386,7 @@ void offset(int fd) {
 
       printf("%ld M %.6f %.6f\n", time(NULL), rtc_ts, sec_offsets[i]);
       fflush(stdout);
-      sleep(32);
+      sleep(OFFSET_INTERVAL);
     }
 
     rtc_ppm = lse_calibration_to_ppm(page4.lse_calibration);
@@ -393,7 +394,7 @@ void offset(int fd) {
     // aim for 10 minute corrections
     ppm_p = sec_offsets[OFFSET_COUNT-1] / 640.0 * 1000000.0;
     ppm_i = ppm_i / OFFSET_COUNT * 300.0;
-    ppm_d = linear(sec_offsets, OFFSET_COUNT, 32) + rtc_ppm;
+    ppm_d = linear(sec_offsets, OFFSET_COUNT, OFFSET_INTERVAL) + rtc_ppm;
 
     rtc_calib = ppm_to_lse_calibration(ppm_p + ppm_i + ppm_d);
 
